@@ -1,0 +1,1 @@
+SELECT query, read_rows, memory_usage FROM system.query_log ORDER BY query_duration_ms DESC LIMIT 10;
