@@ -1,0 +1,7 @@
+# Oracle to PostgreSQL Type Mapping
+
+NUMBER -> NUMERIC
+VARCHAR2 -> TEXT
+DATE -> TIMESTAMP
+CLOB -> TEXT
+BLOB -> BYTEA
