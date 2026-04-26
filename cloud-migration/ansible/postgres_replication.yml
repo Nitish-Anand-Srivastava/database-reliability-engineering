@@ -1,0 +1,14 @@
+- name: Setup PostgreSQL replication
+  hosts: db
+  become: yes
+
+  tasks:
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql
+        state: present
+
+    - name: Configure replication
+      lineinfile:
+        path: /etc/postgresql/postgresql.conf
+        line: "wal_level = replica"
