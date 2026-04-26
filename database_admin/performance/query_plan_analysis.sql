@@ -1,0 +1,2 @@
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM posts WHERE user_id = 1;
