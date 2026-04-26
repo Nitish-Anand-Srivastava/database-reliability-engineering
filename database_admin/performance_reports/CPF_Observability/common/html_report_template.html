@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>CPF_Observability Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    h1,h2 { color: #93c5fd; }
+    .card { border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #334155; padding: 6px; font-size: 12px; }
+    th { background: #1e293b; }
+    .sev-high { color: #fca5a5; }
+    .sev-med { color: #fde68a; }
+    .sev-low { color: #86efac; }
+  </style>
+</head>
+<body>
+  <h1>CPF_Observability - {{DB_TYPE}} Performance Report</h1>
+  <div class="card"><b>Report Window:</b> {{WINDOW}} | <b>Generated:</b> {{GENERATED_AT}}</div>
+  <div class="card">{{SUMMARY}}</div>
+  <h2>Findings</h2>
+  {{FINDINGS_TABLE}}
+  <h2>Top Workload</h2>
+  {{TOP_WORKLOAD_TABLE}}
+  <h2>Blocking / Deadlocks / Long Running</h2>
+  {{LOCKING_TABLE}}
+  <h2>Wait and Resource Pressure</h2>
+  {{WAITS_TABLE}}
+  <h2>Recommendations</h2>
+  {{RECOMMENDATIONS}}
+</body>
+</html>

@@ -1,0 +1,3 @@
+-- Delta queries for report window (last 30m by default)
+-- Compare current snapshot vs previous snapshot
+-- Produce findings table with severity and recommendation fields

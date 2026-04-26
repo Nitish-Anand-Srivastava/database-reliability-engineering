@@ -1,0 +1,14 @@
+---
+- name: DB patch window orchestration (template)
+  hosts: db_fleet
+  gather_facts: false
+  tasks:
+    - name: Pre-check placeholder
+      debug:
+        msg: "Run backup validation and replication health checks"
+    - name: Patch placeholder
+      debug:
+        msg: "Apply engine-specific patch procedure"
+    - name: Post-check placeholder
+      debug:
+        msg: "Run smoke test + latency/replication validation"
