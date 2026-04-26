@@ -1,26 +1,40 @@
-# Data Platform Architecture Blueprint
-### Principal Database Engineering | Data Platform | SRE
+# Database Reliability Engineering
+### Principal Database Engineer | Cloud Data Architect | SRE
 
-Production-grade Unified Data Platform combining Data Engineering, Advanced DBA, and Reliability Engineering.
+Production-grade platform for building **self-healing, high-scale, and resilient database systems**
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Stars](https://img.shields.io/github/stars/nitish120789/database-reliability-engineering)
 ![Contributions](https://img.shields.io/badge/contributions-welcome-orange)
-![Stars](https://img.shields.io/github/stars/nitish120789/Data-Engineering)
 
 ---
 
-## Why This Repository Exists
+## Key Highlights
 
-This repository demonstrates how to design, operate, and scale production data systems that do not fail under load.
-
-- VLDB systems (>100 TB)
+- VLDB systems (>100TB)
 - 99.99% uptime architectures
-- Multi-region HA/DR
+- Autonomous failover systems
 - Zero-downtime migrations
-- Automation-first engineering
+- Performance governance (CI/CD enforced)
 - 30–70% performance improvements
 - 30–50% cost optimization
+
+---
+
+## Why This Repository Stands Out
+
+Most repositories show pipelines.
+
+This repository demonstrates **system-level engineering**:
+
+- Preventing failures (DDL Guardrails)
+- Detecting failures (Observability + Monitoring)
+- Recovering automatically (Failover Systems)
+- Enforcing performance (CI/CD Governance)
+- Migrating at scale (100TB+ workloads)
+
+This is a **production blueprint**, not a tutorial.
 
 ---
 
@@ -38,22 +52,38 @@ F --> G[Alerts]
 
 ---
 
-## Core Architectural Philosophy
+## Autonomous Failover Architecture
 
-1. Idempotent pipelines
-2. Observability (freshness, drift, anomalies)
-3. Schema governance via contracts
-4. Performance engineering (partitioning, indexing)
+```mermaid
+flowchart LR
+A[Health Check] --> B[Heartbeat Logic]
+B --> C[Event Emitter]
+C --> D[Dispatcher]
+D --> E[Execution Layer]
+E --> F[Recovery Action]
+```
 
 ---
 
-## Medallion Architecture
+## System Layers
 
-| Layer | Purpose |
-|------|--------|
-| Bronze | Raw ingestion |
-| Silver | Cleaned + validated |
-| Gold | Business-ready |
+| Layer | Capability |
+|------|-----------|
+| Data Platform | ETL, Medallion Architecture |
+| Database Engineering | Query tuning, partitioning |
+| Reliability | Failover, monitoring |
+| Governance | Performance budgets, DDL guardrails |
+| Migration | 100TB+ enterprise workflows |
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/nitish120789/database-reliability-engineering.git
+cd database-reliability-engineering
+docker-compose up
+```
 
 ---
 
@@ -82,15 +112,13 @@ F --> G[Alerts]
 
 ## Performance Governance (CI/CD Gate)
 
-This platform enforces automated performance budgets:
-
 - Every pull request triggers benchmark execution
-- Query performance is compared against baseline metrics
-- If regression exceeds 10%, the pipeline fails automatically
+- Query performance compared against baseline
+- >10% regression automatically fails pipeline
 
 ### Outcome
 
-- Prevents performance degradation in production
+- Prevents performance degradation
 - Enforces database SLAs
 - Aligns engineering with cost efficiency
 
@@ -98,48 +126,49 @@ This platform enforces automated performance budgets:
 
 ## Autonomous Failover System (Azure SQL)
 
-This platform implements a self-healing database failover architecture using event-driven design:
-
-- Health checks monitor database availability
-- Heartbeat logic tracks repeated failures
-- Events are generated when failure thresholds are exceeded
-- Dispatcher routes events to execution layer
-- Automated pipeline executes recovery actions
-
-### Architecture Flow
-
-```mermaid
-flowchart LR
-A[Health Check] --> B[Heartbeat Logic]
-B --> C[Event Emitter]
-C --> D[Dispatcher]
-D --> E[Execution Layer]
-E --> F[Recovery Action]
-```
+- Health checks monitor availability
+- Heartbeat detects repeated failures
+- Event-driven architecture triggers recovery
+- Dispatcher routes execution
 
 ### Outcome
 
 - Zero manual intervention
 - Faster recovery response
 - Reduced operational risk
-- Production-grade resilience
 
 ---
 
 ## DDL Guardrails (Safe Schema Changes)
 
-This platform enforces engineered schema change safety:
-
-- Pre-check policies validate system load before schema changes
-- Guardrails prevent high-risk schema operations
-- Shadow migration pattern used for large tables
-- Threshold-based monitoring reduces contention risk
+- Pre-check policies validate system load
+- Guardrails prevent risky schema changes
+- Shadow migrations for large tables
+- Threshold-based monitoring
 
 ### Outcome
 
 - Eliminates lock-related outages
-- Enables safe schema evolution at scale
-- Transforms deployments from risk-based to engineered
+- Enables safe schema evolution
+- Engineered deployment safety
+
+---
+
+## Key Projects
+
+- Retail ETL Pipeline → Batch + streaming ingestion with validation
+- Oracle → PostgreSQL Migration → 100TB+ with ora2pg + CDC
+- SQL Server → Azure SQL → Data Box + Parquet + ADF
+- Autonomous Failover System → Event-driven recovery pipeline
+
+---
+
+## Real-World Use Cases
+
+- Financial transaction systems (low latency + HA)
+- Retail analytics pipelines (batch + streaming)
+- IoT ingestion systems (high throughput)
+- Enterprise cloud migrations (100TB+ data)
 
 ---
 
@@ -153,29 +182,13 @@ This platform enforces engineered schema change safety:
 
 ---
 
-## Local Sandbox
-
-```bash
-cd data-platform/docker
-docker-compose up
-```
-
----
-
-## Projects
-
-- Retail ETL pipeline
-- Oracle to PostgreSQL migration
-- HA/DR deployments
-- Storage benchmarking
-
----
-
 ## Why Engineers Star This Repo
 
-- Production-grade architecture
-- Covers Data + DBA + SRE
-- Real-world patterns
+- Production-grade architecture patterns
+- Covers Data + DBA + SRE together
+- Includes failure scenarios and solutions
+- Shows automation, not just scripts
+- Designed for scale, not demos
 
 ---
 
