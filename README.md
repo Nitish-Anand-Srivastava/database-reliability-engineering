@@ -126,6 +126,23 @@ E --> F[Recovery Action]
 
 ---
 
+## DDL Guardrails (Safe Schema Changes)
+
+This platform enforces engineered schema change safety:
+
+- Pre-check policies validate system load before schema changes
+- Guardrails prevent high-risk schema operations
+- Shadow migration pattern used for large tables
+- Threshold-based monitoring reduces contention risk
+
+### Outcome
+
+- Eliminates lock-related outages
+- Enables safe schema evolution at scale
+- Transforms deployments from risk-based to engineered
+
+---
+
 ## Benchmark Snapshot
 
 | Format | Query Time | Storage |
