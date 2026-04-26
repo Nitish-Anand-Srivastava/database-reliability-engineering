@@ -1,0 +1,7 @@
+alerts:
+  - name: high_replication_lag
+    condition: replication_lag > 5s
+  - name: high_connections
+    condition: connections > 90%
+  - name: slow_queries
+    condition: query_time > 2s
