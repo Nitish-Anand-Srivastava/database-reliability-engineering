@@ -1,0 +1,17 @@
+name: Performance Gate
+
+on:
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run benchmark
+        run: python ci-cd/performance/run_benchmark.py
+
+      - name: Compare performance
+        run: python ci-cd/performance/compare.py
