@@ -1,82 +1,96 @@
 # Principal Database Engineer | Cloud Data Architect | SRE
 
+Production-grade Unified Data Platform Blueprint combining Data Engineering, Advanced DBA, and SRE practices.
+
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Contributions](https://img.shields.io/badge/contributions-welcome-orange)
 ![Stars](https://img.shields.io/github/stars/nitish120789/Data-Engineering)
 
-## Tech Stack
-Oracle | SQL Server | PostgreSQL | MySQL | Sybase ASE | Azure SQL | ClickHouse | Redis | Aerospike | Cosmos DB | AWS RDS/Aurora | Kubernetes | Terraform | Ansible | Python
-
 ---
 
-## Highlights
-- VLDB systems (>100TB)
-- 99.99% uptime architectures
-- HA/DR multi-region deployments
+## Why this Repo
+
+This repository demonstrates how to design and operate real production-grade data systems:
+
+- VLDB systems (>100 TB)
+- Multi-region HA/DR architectures
 - Zero-downtime migrations
 - Automation-first engineering
-- Cost optimization (30-50% savings)
+- Performance and cost optimization
 
 ---
 
-## Architecture
+## Architecture (Medallion Framework)
 
 ```mermaid
 flowchart LR
-A[Source Systems] --> B[ETL Pipelines]
-B --> C[Databases]
-C --> D[Analytics]
-C --> E[Monitoring]
-E --> F[Alerting]
+A[Sources] --> B[Bronze]
+B --> C[Silver]
+C --> D[Gold]
+D --> E[Analytics]
+E --> F[Monitoring]
+F --> G[Alerts]
 ```
 
-### HA/DR
-```mermaid
-flowchart LR
-Primary --> Replica
-Primary --> Standby
-Standby --> Failover
+---
+
+## Core Capabilities
+
+### Data Engineering
+- Medallion architecture (Bronze/Silver/Gold)
+- dbt-based transformations
+- dlt ingestion pipelines
+
+### Database Engineering
+- Partitioning and indexing strategies
+- Query optimization and tuning
+- Replication and HA setups
+
+### Platform Engineering
+- Terraform infrastructure modules
+- Kubernetes deployments
+- Docker-based local sandbox
+
+### Observability & SRE
+- Pipeline freshness tracking
+- Schema drift detection
+- Data contracts and validation
+
+---
+
+## Run Locally
+
+```bash
+cd data-platform/docker
+docker-compose up
 ```
 
 ---
 
 ## Projects
+
 - Retail ETL pipeline
-- Oracle RAC + Data Guard HA/DR
-- SQL Server Always On + Log Shipping
-- PostgreSQL/MySQL migrations (AWS DMS, ora2pg)
-- ClickHouse analytics pipeline
-- Redis/Aerospike caching demo
-- Cosmos DB global distribution
+- Oracle to PostgreSQL migration
+- HA/DR deployments
+- Storage benchmarking
 
 ---
 
-## How to Run
+## Why Engineers Star This Repo
 
-```bash
-git clone https://github.com/nitish120789/Data-Engineering.git
-cd Data-Engineering
-python projects/retail_etl/ingest.py
-python projects/retail_etl/transform.py
-python projects/retail_etl/load.py
-```
-
----
-
-## Real-world Use Cases
-- Retail ETL
-- IoT ingestion
-- Financial pipelines
-- Cloud-native lakehouse
-
----
-
-## Why this repo matters
-
-Demonstrates production-grade engineering across databases, cloud, and SRE practices.
+- Production-grade architecture
+- Covers Data + DBA + SRE together
+- Real-world engineering patterns
 
 ---
 
 ## CI/CD
-GitHub Actions enabled for pipeline validation.
+
+GitHub Actions configured for testing and validation.
+
+---
+
+## Contributing
+
+Pull requests are welcome.
