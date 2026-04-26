@@ -1,0 +1,6 @@
+-- Snapshot query pack (replace with engine-specific SQL/commands)
+-- 1) Instance/session/activity
+-- 2) Top queries/workload
+-- 3) Waits/locks/deadlocks
+-- 4) Memory/cache/io
+-- 5) Replication/HA health

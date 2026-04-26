@@ -1,0 +1,4 @@
+Windowed report logic (last 30 min default):
+- Compare snapshots, identify deltas
+- Severity score per finding
+- Generate recommendation list

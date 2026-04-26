@@ -1,0 +1,6 @@
+Snapshot collectors should capture:
+- Current operations and long-running ops
+- Lock waits/deadlocks where available
+- Top operations by latency/resource
+- Connection/session profile
+- Replication/partition health metrics
