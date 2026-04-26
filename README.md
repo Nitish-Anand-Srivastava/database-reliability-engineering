@@ -1,119 +1,43 @@
 # Data Engineering and Database Administration Platform
 
-This repository provides a practical, end-to-end setup for data engineering pipelines and database administration tasks. It is designed to reflect real-world systems involving ETL workflows, infrastructure automation, and database performance troubleshooting.
-
----
+![CI](https://img.shields.io/badge/build-passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Contributions](https://img.shields.io/badge/contributions-welcome-orange)
 
 ## Overview
 
-The project combines multiple areas typically handled across data and platform teams:
+Production-grade platform combining Data Engineering, DBA, and SRE practices.
 
-- Data ingestion, transformation, and loading using Python
-- Workflow orchestration using Apache Airflow
-- PostgreSQL performance analysis and DBA tooling
-- Infrastructure provisioning using Terraform
-- Configuration management using Ansible
-- Automation using shell and PowerShell scripts
-
----
+## Tech Stack
+- Python, SQL
+- PostgreSQL, MySQL
+- Terraform, Ansible
+- AWS, Azure
 
 ## Architecture
 
-```
-API → Ingestion → Transformation → Load → PostgreSQL
-                         ↓
-                    Airflow DAG
-                         ↓
-          Monitoring and DBA Optimization
-                         ↓
-     Terraform and Ansible Deployment Layer
+```mermaid
+flowchart LR
+A[Source] --> B[Ingestion]
+B --> C[Transform]
+C --> D[Database]
+D --> E[Monitoring]
 ```
 
----
+## Structure
 
-## Repository Structure
+etl/
+database/
+cloud/
+monitoring/
+infrastructure/
+docs/
 
-```
-data_engineering/        ETL pipelines
-pipelines/               Airflow DAGs
-sql/                     Schema and optimization scripts
-database_admin/          DBA scripts (monitoring, maintenance, troubleshooting)
-infrastructure/          Terraform and Ansible
-automation/              Deployment scripts
-configs/                 Configuration management
-```
+## Run
 
----
-
-## Tech Stack
-
-- Python
-- Apache Airflow
-- PostgreSQL
-- Terraform
-- Ansible
-- Shell and PowerShell
-
----
-
-## DBA Toolkit
-
-The repository includes scripts and playbooks for common database issues:
-
-- Slow query identification using pg_stat_statements
-- Lock contention analysis
-- Index and storage analysis
-- Cache performance checks
-- Routine maintenance operations
-
----
-
-## Getting Started
-
-### Clone repository
-
-```
-git clone https://github.com/nitish120789/Data-Engineering.git
-cd Data-Engineering
-```
-
-### Run ETL pipeline
-
-```
 python data_engineering/ingestion/ingest_api_data.py
-python data_engineering/transformation/transform_data.py
-python data_engineering/loading/load_to_db.py
-```
-
-### Deploy infrastructure
-
-```
-cd automation
-./deploy.sh
-```
-
----
 
 ## Use Cases
-
-This project can be used to:
-
-- Understand end-to-end data pipeline implementation
-- Practice database performance troubleshooting
-- Learn infrastructure automation for database systems
-- Build a foundation for production-grade data platforms
-
----
-
-## Roadmap
-
-- CI/CD enhancements
-- Observability integration (Prometheus, Grafana)
-- Streaming pipelines (Kafka)
-- Distributed processing (Spark)
-
----
-
-## Contributing
-
-Contributions and improvements are welcome.
+- ETL pipelines
+- Performance tuning
+- Cloud DB ops
