@@ -87,6 +87,77 @@ docker-compose up
 
 ---
 
+## Repository Navigation (Start Here)
+
+Use this map to quickly find the right content by objective:
+
+- Day-2 DBA/DBRE operations:
+	- `database_admin/`
+- Data platform and ETL engineering:
+	- `data-platform/`, `data_engineering/`, `pipelines/`
+- HA/DR and failover automation:
+	- `ha-failover/`, `cloud-migration/`, `infrastructure/`
+- Architecture and reference guides:
+	- `docs/`
+- Performance and guardrails:
+	- `db-optimization/`, `db-guardrails/`
+
+Canonical governance documents:
+
+- Gap analysis and roadmap:
+	- `docs/repository-gaps-and-improvement-plan.md`
+- Taxonomy and naming conventions:
+	- `docs/repository-taxonomy.md`
+- Standard runbook template:
+	- `database_admin/templates/runbook_template.md`
+
+---
+
+## Runbooks and Reliability Standards
+
+Operational runbooks should follow one format and include preparation, verification, and rollback.
+
+- Runbook index:
+	- `docs/runbooks/incident.md`
+- PostgreSQL incident response:
+	- `database_admin/sre/runbooks/incident_response.md`
+- Failover procedure:
+	- `database_admin/sre/runbooks/failover_procedure.md`
+- Disaster recovery:
+	- `database_admin/sre/runbooks/disaster_recovery.md`
+
+Minimum reliability controls expected in each runbook:
+
+- SLO/RTO/RPO context
+- Safety gates and approvals
+- Verification criteria and stop conditions
+- Rollback or fallback path
+- Evidence collection for audit and postmortems
+
+---
+
+## Learning and Interview Path
+
+Suggested progression for structured learning and interview preparation:
+
+1. Foundation:
+	 - `database_admin/estate_operations/00_governance/`
+	 - `database_admin/estate_operations/02_observability/`
+2. Reliability operations:
+	 - `database_admin/sre/runbooks/`
+	 - `database_admin/backup/`
+	 - `database_admin/replication/`
+3. Performance and scaling:
+	 - `db-optimization/`
+	 - `database_admin/indexing/`
+	 - `database_admin/performance/`
+4. Architecture and migration design:
+	 - `docs/architecture/`
+	 - `cloud-migration/`
+	 - `migrations/`
+
+---
+
 ## Core Capabilities
 
 ### Data Engineering
