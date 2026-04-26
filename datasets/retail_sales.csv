@@ -1,0 +1,6 @@
+order_id,order_date,region,product,quantity,price
+1,2024-01-01,North,Widget,2,10.5
+2,2024-01-01,South,Gadget,1,20.0
+3,2024-01-02,North,Widget,3,10.5
+4,2024-01-02,West,Doohickey,5,7.0
+5,2024-01-03,East,Gadget,2,20.0
