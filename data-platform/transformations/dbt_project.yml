@@ -1,0 +1,4 @@
+name: data_platform
+version: 1.0
+profile: default
+model-paths: ["models"]
