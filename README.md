@@ -1,83 +1,83 @@
-# 🚀 Data Engineering & Database Administration Platform
+# Data Engineering and Database Administration Platform
 
-A **production-grade, end-to-end Data Engineering + DBA project** designed for real-world systems involving ETL pipelines, infrastructure automation, and database performance optimization.
-
----
-
-## 🔥 Why this repo stands out
-
-This repository is built to reflect **real enterprise environments**, combining:
-
-- End-to-End ETL Pipelines (Python)
-- Airflow Orchestration
-- PostgreSQL Performance Tuning (DBA toolkit)
-- Infrastructure as Code (Terraform)
-- Configuration Management (Ansible)
-- Automation (Shell + PowerShell)
+This repository provides a practical, end-to-end setup for data engineering pipelines and database administration tasks. It is designed to reflect real-world systems involving ETL workflows, infrastructure automation, and database performance troubleshooting.
 
 ---
 
-## 🏗️ Architecture Overview
+## Overview
+
+The project combines multiple areas typically handled across data and platform teams:
+
+- Data ingestion, transformation, and loading using Python
+- Workflow orchestration using Apache Airflow
+- PostgreSQL performance analysis and DBA tooling
+- Infrastructure provisioning using Terraform
+- Configuration management using Ansible
+- Automation using shell and PowerShell scripts
+
+---
+
+## Architecture
 
 ```
 API → Ingestion → Transformation → Load → PostgreSQL
                          ↓
                     Airflow DAG
                          ↓
-          Monitoring + DBA Optimization
+          Monitoring and DBA Optimization
                          ↓
-     Terraform + Ansible Deployment Layer
+     Terraform and Ansible Deployment Layer
 ```
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
 ```
-data_engineering/        # ETL pipelines
-pipelines/               # Airflow DAGs
-sql/                     # Schema + optimization
-database_admin/          # DBA scripts (monitoring, maintenance)
-infrastructure/          # Terraform + Ansible
-automation/              # Deployment scripts
-configs/                 # Configuration management
+data_engineering/        ETL pipelines
+pipelines/               Airflow DAGs
+sql/                     Schema and optimization scripts
+database_admin/          DBA scripts (monitoring, maintenance, troubleshooting)
+infrastructure/          Terraform and Ansible
+automation/              Deployment scripts
+configs/                 Configuration management
 ```
 
 ---
 
-## ⚙️ Tech Stack
+## Tech Stack
 
 - Python
 - Apache Airflow
 - PostgreSQL
 - Terraform
 - Ansible
-- Shell / PowerShell
+- Shell and PowerShell
 
 ---
 
-## 🧠 DBA Performance Toolkit
+## DBA Toolkit
 
-Includes:
+The repository includes scripts and playbooks for common database issues:
 
-- Slow query analysis (pg_stat_statements)
-- Index optimization
-- Vacuum & Analyze scripts
-- Backup automation
-- Query monitoring
+- Slow query identification using pg_stat_statements
+- Lock contention analysis
+- Index and storage analysis
+- Cache performance checks
+- Routine maintenance operations
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### Clone repo
+### Clone repository
 
 ```
 git clone https://github.com/nitish120789/Data-Engineering.git
 cd Data-Engineering
 ```
 
-### Run pipeline
+### Run ETL pipeline
 
 ```
 python data_engineering/ingestion/ingest_api_data.py
@@ -85,7 +85,7 @@ python data_engineering/transformation/transform_data.py
 python data_engineering/loading/load_to_db.py
 ```
 
-### Deploy infra
+### Deploy infrastructure
 
 ```
 cd automation
@@ -94,21 +94,26 @@ cd automation
 
 ---
 
-## 📈 Roadmap
+## Use Cases
 
-- CI/CD (GitHub Actions)
-- Observability (Prometheus + Grafana)
-- Spark + Kafka pipelines
-- Cloud-native architecture (AWS / Azure)
+This project can be used to:
 
----
-
-## 🤝 Contributing
-
-PRs and suggestions are welcome.
+- Understand end-to-end data pipeline implementation
+- Practice database performance troubleshooting
+- Learn infrastructure automation for database systems
+- Build a foundation for production-grade data platforms
 
 ---
 
-## ⭐ Support
+## Roadmap
 
-If this repo helps you, give it a ⭐ and share it with others in the data community.
+- CI/CD enhancements
+- Observability integration (Prometheus, Grafana)
+- Streaming pipelines (Kafka)
+- Distributed processing (Spark)
+
+---
+
+## Contributing
+
+Contributions and improvements are welcome.
