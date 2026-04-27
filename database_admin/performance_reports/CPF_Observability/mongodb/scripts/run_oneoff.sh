@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-TS=$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -p ../data/snapshots ../data/reports ../logs
-echo "Running one-off snapshot at ${TS}" | tee -a ../logs/cpf.log
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+exec "${SCRIPT_DIR}/../../common/run_oneoff_engine.sh" "mongodb" "${ENGINE_ROOT}"

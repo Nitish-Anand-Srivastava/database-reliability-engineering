@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Delete snapshot/report files older than 7 days by default
-find ../data/snapshots -type f -mtime +7 -delete
-find ../data/reports -type f -mtime +7 -delete
-echo "Retention cleanup complete"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+exec "${SCRIPT_DIR}/../../common/cleanup_retention_engine.sh" "postgresql" "${ENGINE_ROOT}"

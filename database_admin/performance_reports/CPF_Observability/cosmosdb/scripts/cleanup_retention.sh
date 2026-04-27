@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-find ../data/snapshots -type f -mtime +7 -delete
-find ../data/reports -type f -mtime +7 -delete
-echo "Cleanup complete"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+exec "${SCRIPT_DIR}/../../common/cleanup_retention_engine.sh" "cosmosdb" "${ENGINE_ROOT}"

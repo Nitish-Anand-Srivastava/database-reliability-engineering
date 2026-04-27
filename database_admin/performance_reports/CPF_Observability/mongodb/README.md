@@ -1,26 +1,62 @@
 # CPF_Observability - mongodb
 
 ## Purpose
-Generate AWR-style HTML performance insights for **mongodb** with default **30-minute snapshots** and **7-day retention**.
+Generate AWR-style deep performance diagnostics for **mongodb** with default **30-minute snapshots** and **7-day retention**.
 
-## Paths
-- Config: `database_admin/performance_reports/CPF_Observability/mongodb/config/default.env`
-- Snapshot collectors: `database_admin/performance_reports/CPF_Observability/mongodb/snapshots/`
-- Report datasets: `database_admin/performance_reports/CPF_Observability/mongodb/reports/`
-- Scripts: `database_admin/performance_reports/CPF_Observability/mongodb/scripts/`
-- Snapshot storage: `database_admin/performance_reports/CPF_Observability/mongodb/data/snapshots/`
-- HTML output: `database_admin/performance_reports/CPF_Observability/mongodb/data/reports/`
-- Logs: `database_admin/performance_reports/CPF_Observability/mongodb/logs/`
+## Outputs
+- Snapshot artifact: `data/snapshots/snapshot_<timestamp>.txt`
+- Detailed TXT report: `data/reports/report_<timestamp>.txt`
+- Detailed HTML report: `data/reports/report_<timestamp>.html`
+- Operational logs: `logs/cpf.log`
 
-## Quick start (junior DBA)
-1. Edit `config/default.env` (connection/profile values).
-2. Run one-off: `cd .../mongodb/scripts && ./run_oneoff.sh`.
-3. Schedule every 30 minutes via cron/Task Scheduler using `schedule_30m.sh` guidance.
-4. Run retention cleanup daily via `cleanup_retention.sh`.
+## Scripts
+### Linux
+- One-off: `scripts/run_oneoff.sh`
+- Schedule helper: `scripts/schedule_30m.sh`
+- Retention cleanup: `scripts/cleanup_retention.sh`
 
-## Modes
-- Scheduled mode: `RUN_MODE=scheduled` (default)
-- One-off mode: `RUN_MODE=oneoff`
+### Windows
+- One-off: `scripts/run_oneoff.ps1`
+- Schedule helper (or installer): `scripts/schedule_30m.ps1`
+- Retention cleanup: `scripts/cleanup_retention.ps1`
 
-## Required report sections
-- Workload summary, top SQL/ops, waits, blocking/deadlocks, long-running workload, resource pressure, and recommendations.
+## Quick Start (Linux)
+1. Update `config/default.env` with engine-specific connectivity.
+2. Ensure LF line endings if files were transferred from Windows:
+     - `sed -i 's/\r$//' config/default.env scripts/*.sh`
+3. Set execute permission:
+     - `chmod 750 scripts/*.sh`
+4. Generate report:
+     - `cd scripts && ./run_oneoff.sh`
+
+## Quick Start (Windows)
+1. Update `config/default.env`.
+2. Generate report:
+     - `powershell -ExecutionPolicy Bypass -File scripts/run_oneoff.ps1`
+3. Print scheduler guidance:
+     - `powershell -ExecutionPolicy Bypass -File scripts/schedule_30m.ps1`
+
+## Configuration Notes
+Edit `config/default.env`:
+- Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
+
+## AWR-Style Sections Produced
+The TXT/HTML report includes as much detail as available for the engine and permissions:
+- Instance identity and version
+- Uptime, connection pressure, and throughput counters
+- Wait/resource pressure and IO/cache indicators
+- Top workload statements and heavy operations
+- Blocking/deadlock or lock contention signals
+- Replication/cluster indicators where applicable
+- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
+
+## Troubleshooting
+- `No such file or directory` on Linux script execution:
+    - Run: `sed -i 's/\r$//' scripts/*.sh config/default.env`
+- `Permission denied`:
+    - Run: `chmod 750 scripts/*.sh`
+- Section marked unavailable:
+    - Confirm required privileges/views/extensions are enabled on target engine.
+- Missing client command:
+    - Install the native CLI for your engine (`mysql`, `psql`, `sqlcmd`, `sqlplus`, `redis-cli`, `mongosh`, `clickhouse-client`, `cqlsh`, or `az`).

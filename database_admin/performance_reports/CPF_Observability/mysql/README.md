@@ -1,85 +1,62 @@
 # CPF_Observability - mysql
 
 ## Purpose
-Generate AWR-style performance insights for **mysql** with default **30-minute snapshots** and **7-day retention**, including detailed **TXT** and **HTML** reports.
+Generate AWR-style deep performance diagnostics for **mysql** with default **30-minute snapshots** and **7-day retention**.
 
-## Paths
-- Config: `database_admin/performance_reports/CPF_Observability/mysql/config/default.env`
-- Snapshot collectors: `database_admin/performance_reports/CPF_Observability/mysql/snapshots/`
-- Report datasets: `database_admin/performance_reports/CPF_Observability/mysql/reports/`
-- Scripts: `database_admin/performance_reports/CPF_Observability/mysql/scripts/`
-- Snapshot storage: `database_admin/performance_reports/CPF_Observability/mysql/data/snapshots/`
-- TXT output: `database_admin/performance_reports/CPF_Observability/mysql/data/reports/report_<timestamp>.txt`
-- HTML output: `database_admin/performance_reports/CPF_Observability/mysql/data/reports/report_<timestamp>.html`
-- Logs: `database_admin/performance_reports/CPF_Observability/mysql/logs/`
+## Outputs
+- Snapshot artifact: `data/snapshots/snapshot_<timestamp>.txt`
+- Detailed TXT report: `data/reports/report_<timestamp>.txt`
+- Detailed HTML report: `data/reports/report_<timestamp>.html`
+- Operational logs: `logs/cpf.log`
 
-## Quick start (junior DBA)
-1. Edit `config/default.env` (connection/profile values).
-2. Ensure scripts are executable: `chmod 750 scripts/*.sh`.
-3. Ensure Linux line endings if files were copied from Windows: `sed -i 's/\r$//' scripts/*.sh`.
-4. Run one-off: `cd .../mysql/scripts && ./run_oneoff.sh`.
-5. Schedule every 30 minutes via cron/Task Scheduler using `schedule_30m.sh` guidance.
-6. Run retention cleanup daily via `cleanup_retention.sh`.
+## Scripts
+### Linux
+- One-off: `scripts/run_oneoff.sh`
+- Schedule helper: `scripts/schedule_30m.sh`
+- Retention cleanup: `scripts/cleanup_retention.sh`
+
+### Windows
+- One-off: `scripts/run_oneoff.ps1`
+- Schedule helper (or installer): `scripts/schedule_30m.ps1`
+- Retention cleanup: `scripts/cleanup_retention.ps1`
+
+## Quick Start (Linux)
+1. Update `config/default.env` with engine-specific connectivity.
+2. Ensure LF line endings if files were transferred from Windows:
+     - `sed -i 's/\r$//' config/default.env scripts/*.sh`
+3. Set execute permission:
+     - `chmod 750 scripts/*.sh`
+4. Generate report:
+     - `cd scripts && ./run_oneoff.sh`
+
+## Quick Start (Windows)
+1. Update `config/default.env`.
+2. Generate report:
+     - `powershell -ExecutionPolicy Bypass -File scripts/run_oneoff.ps1`
+3. Print scheduler guidance:
+     - `powershell -ExecutionPolicy Bypass -File scripts/schedule_30m.ps1`
+
+## Configuration Notes
+Edit `config/default.env`:
+- Generic keys: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- Engine-specific keys are also available for MySQL, PostgreSQL, SQL Server, Oracle, Redis, MongoDB, ClickHouse, Cassandra, and Cosmos DB.
+
+## AWR-Style Sections Produced
+The TXT/HTML report includes as much detail as available for the engine and permissions:
+- Instance identity and version
+- Uptime, connection pressure, and throughput counters
+- Wait/resource pressure and IO/cache indicators
+- Top workload statements and heavy operations
+- Blocking/deadlock or lock contention signals
+- Replication/cluster indicators where applicable
+- Additional engine diagnostics (for example, InnoDB status, wait stats, active operations)
 
 ## Troubleshooting
-
-- Symptom: `No such file or directory` when running `./run_oneoff.sh`
-	- Likely cause: CRLF line endings on Linux shell scripts.
-	- Fix: `sed -i 's/\r$//' scripts/*.sh config/*.env`
-- Symptom: `Permission denied`
-	- Likely cause: execute bit not set.
-	- Fix: `chmod 750 scripts/*.sh`
-- Symptom: `: command not found .../config/default.env: line N`
-	- Likely cause: `default.env` has CRLF or hidden BOM characters.
-	- Fix: `sed -i 's/\r$//' config/default.env`
-- Symptom: `ERROR 1146 ... performance_schema.global_status doesn't exist`
-	- Likely cause: server flavor/version does not expose that table.
-	- Fix: use `SHOW GLOBAL STATUS` based report queries (already updated in `reports/report_queries.sql`).
-
-## Modes
-- Scheduled mode: `RUN_MODE=scheduled` (default)
-- One-off mode: `RUN_MODE=oneoff`
-
-## How target MySQL instance is selected
-
-`run_oneoff.sh` reads connection values from `config/default.env`:
-
-- `MYSQL_LOGIN_PATH` (preferred, secure)
-- `MYSQL_HOST`
-- `MYSQL_PORT`
-- `MYSQL_USER`
-- `MYSQL_DATABASE`
-- `MYSQL_PASSWORD` (optional, avoid plain text when possible)
-
-Selection logic:
-
-1. If `MYSQL_LOGIN_PATH` is set, script connects using `mysql --login-path=<value>`.
-2. Otherwise, script uses host/port/user/database from `default.env`.
-3. Environment variables override `default.env` values, so you can run one-off against another instance without editing files.
-
-Examples:
-
-- Use login-path:
-	- `MYSQL_LOGIN_PATH=prod_obsv ./run_oneoff.sh`
-- Use direct host override:
-	- `MYSQL_HOST=10.20.30.40 MYSQL_PORT=3306 MYSQL_USER=cpf_reader MYSQL_DATABASE=performance_schema ./run_oneoff.sh`
-
-## Required report sections
-- Workload summary, top SQL/ops, waits, blocking/deadlocks, long-running workload, resource pressure, and recommendations.
-
-## Detailed report contents (AWR-style)
-
-The one-off run now captures and writes both TXT and HTML reports with these sections:
-
-- Instance identity and version
-- Uptime and connection pressure
-- Workload volume and throughput counters
-- Temporary object and sort pressure
-- InnoDB buffer and IO signals
-- Lock wait and deadlock counters
-- Current long-running sessions
-- Active lock wait chains
-- Top SQL by total time
-- Top SQL by errors and rows examined
-- Replication summary (MySQL 8 and 5.7 compatible attempts)
-- InnoDB engine status
+- `No such file or directory` on Linux script execution:
+    - Run: `sed -i 's/\r$//' scripts/*.sh config/default.env`
+- `Permission denied`:
+    - Run: `chmod 750 scripts/*.sh`
+- Section marked unavailable:
+    - Confirm required privileges/views/extensions are enabled on target engine.
+- Missing client command:
+    - Install the native CLI for your engine (`mysql`, `psql`, `sqlcmd`, `sqlplus`, `redis-cli`, `mongosh`, `clickhouse-client`, `cqlsh`, or `az`).

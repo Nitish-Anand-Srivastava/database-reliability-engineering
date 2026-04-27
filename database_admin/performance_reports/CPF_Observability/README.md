@@ -1,13 +1,17 @@
 # CPF_Observability (Cross-Platform Forensics)
 
-CPF_Observability is a common performance observability framework that produces **AWR-style HTML reports** across multiple DB platforms.
+CPF_Observability provides a unified, AWR-style diagnostic workflow across database engines. Each engine folder now ships Linux and Windows runners that generate both detailed TXT and HTML reports per execution window.
 
 ## Default behavior
-- Snapshot interval: **30 minutes**
-- Snapshot retention: **7 days**
-- Supports **scheduled mode** and **one-off mode**
+- Snapshot interval: 30 minutes
+- Retention: 7 days
+- Modes: one-off and scheduled
+- Outputs per run:
+  - `data/snapshots/snapshot_<timestamp>.txt`
+  - `data/reports/report_<timestamp>.txt`
+  - `data/reports/report_<timestamp>.html`
 
-## Supported database types
+## Supported engines
 - Oracle
 - SQL Server
 - PostgreSQL
@@ -22,23 +26,55 @@ CPF_Observability is a common performance observability framework that produces 
 - Redis
 - ClickHouse
 
-## Storage layout
-- Snapshots: `database_admin/performance_reports/CPF_Observability/<db_type>/data/snapshots/`
-- HTML reports: `database_admin/performance_reports/CPF_Observability/<db_type>/data/reports/`
-- Runtime logs: `database_admin/performance_reports/CPF_Observability/<db_type>/logs/`
+## Folder model
+Each engine folder includes:
+- `config/default.env` for connectivity and runtime configuration
+- `scripts/run_oneoff.sh` and `scripts/run_oneoff.ps1`
+- `scripts/schedule_30m.sh` and `scripts/schedule_30m.ps1`
+- `scripts/cleanup_retention.sh` and `scripts/cleanup_retention.ps1`
+- `snapshots/` and `reports/` query artifacts for engine-specific extensions
 
-## Core report sections (all DBs)
-- Workload summary (TPS/QPS, connections/sessions)
-- Top SQL/operations by elapsed and resource use
-- Wait events and bottleneck classes
-- Blocking / deadlocks / lock waits
-- Long-running transactions/queries
-- Memory, cache and I/O pressure
-- Replication/HA lag and health (where applicable)
-- Configuration drift and risky settings
+Shared runtime implementation is centralized in:
+- `common/run_oneoff_engine.sh`
+- `common/run_oneoff_engine.ps1`
+- `common/cleanup_retention_engine.sh`
+- `common/cleanup_retention_engine.ps1`
+- `common/report_builder_stub.py`
 
-## What this adds beyond classic AWR style
-- Explicit lock-chain and deadlock sections
-- Slow query and long-xact sections by default
-- Capacity trend and saturation guardrails
-- Operational recommendation section per finding severity
+## AWR-style report sections
+Reports include as much detail as available based on engine and granted privileges. Section set is designed so one run is often enough for first-pass RCA:
+
+- Instance identity, version, and uptime
+- Connection and throughput pressure
+- Wait/resource bottlenecks
+- Top workload statements/operations
+- Blocking and deadlock signals
+- IO/cache/log pressure indicators
+- Replication or cluster health (where applicable)
+- Engine-specific health data (for example InnoDB status, SQL Server waits, Redis INFO, Mongo serverStatus)
+
+Sections unavailable due to permissions or engine/version feature gaps are marked explicitly in report output.
+
+## Linux quick start
+1. Edit `<engine>/config/default.env`
+2. Convert line endings if copied from Windows:
+	- `sed -i 's/\r$//' <engine>/config/default.env <engine>/scripts/*.sh`
+3. Set execute permissions:
+	- `chmod 750 <engine>/scripts/*.sh`
+4. Run one-off:
+	- `cd <engine>/scripts && ./run_oneoff.sh`
+
+## Windows quick start
+1. Edit `<engine>/config/default.env`
+2. Run one-off:
+	- `powershell -ExecutionPolicy Bypass -File <engine>\scripts\run_oneoff.ps1`
+3. Print scheduler guidance:
+	- `powershell -ExecutionPolicy Bypass -File <engine>\scripts\schedule_30m.ps1`
+
+## Notes on validation
+The framework and scripts are fully integrated in the repository. Runtime accuracy depends on:
+- engine-native CLI tools being installed on the execution host
+- valid credentials/connectivity in `default.env`
+- required performance views/extensions enabled (for example `pg_stat_statements`)
+
+Use the generated TXT report as the canonical raw diagnostic artifact and HTML for quick triage navigation.

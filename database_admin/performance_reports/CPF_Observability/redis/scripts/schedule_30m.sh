@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Cron example (every 30 minutes):
-# */30 * * * * /path/to/run_oneoff.sh
-echo "Configure your scheduler to run run_oneoff.sh every 30 minutes."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNNER="${SCRIPT_DIR}/run_oneoff.sh"
+CLEANUP="${SCRIPT_DIR}/cleanup_retention.sh"
+
+cat <<EOF
+Recommended cron entries for redis:
+*/30 * * * * "${RUNNER}" >> "${SCRIPT_DIR}/../logs/scheduler.log" 2>&1
+15 1 * * * "${CLEANUP}" >> "${SCRIPT_DIR}/../logs/scheduler.log" 2>&1
+EOF
