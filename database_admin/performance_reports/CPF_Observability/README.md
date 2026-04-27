@@ -71,6 +71,16 @@ Sections unavailable due to permissions or engine/version feature gaps are marke
 3. Print scheduler guidance:
 	- `powershell -ExecutionPolicy Bypass -File <engine>\scripts\schedule_30m.ps1`
 
+## Readiness Validator (Dry Run)
+Run this before one-off or scheduling to validate tools, config, and connectivity across engines.
+
+- Linux/Bash:
+	- `database_admin/performance_reports/CPF_Observability/common/validate_environment.sh`
+- Windows/PowerShell:
+	- `powershell -ExecutionPolicy Bypass -File database_admin\\performance_reports\\CPF_Observability\\common\\validate_environment.ps1`
+
+The validator prints an engine matrix with `TOOLS`, `CONFIG`, `CONNECTIVITY`, `READY`, and `NOTES`.
+
 ## Notes on validation
 The framework and scripts are fully integrated in the repository. Runtime accuracy depends on:
 - engine-native CLI tools being installed on the execution host

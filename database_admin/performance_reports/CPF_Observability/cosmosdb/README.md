@@ -60,3 +60,11 @@ The TXT/HTML report includes as much detail as available for the engine and perm
     - Confirm required privileges/views/extensions are enabled on target engine.
 - Missing client command:
     - Install the native CLI for your engine (`mysql`, `psql`, `sqlcmd`, `sqlplus`, `redis-cli`, `mongosh`, `clickhouse-client`, `cqlsh`, or `az`).
+
+## Readiness Validator
+Run these before one-off or scheduled execution to confirm required client tools, config presence, and connectivity.
+
+- Linux: `cd scripts && ./validate_environment.sh`
+- Windows: `powershell -ExecutionPolicy Bypass -File scripts/validate_environment.ps1`
+
+The validator prints a pass/fail matrix by engine with notes for missing tools or connectivity failures.
