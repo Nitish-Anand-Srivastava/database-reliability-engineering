@@ -33,5 +33,29 @@ Generate AWR-style HTML performance insights for **mysql** with default **30-min
 - Scheduled mode: `RUN_MODE=scheduled` (default)
 - One-off mode: `RUN_MODE=oneoff`
 
+## How target MySQL instance is selected
+
+`run_oneoff.sh` reads connection values from `config/default.env`:
+
+- `MYSQL_LOGIN_PATH` (preferred, secure)
+- `MYSQL_HOST`
+- `MYSQL_PORT`
+- `MYSQL_USER`
+- `MYSQL_DATABASE`
+- `MYSQL_PASSWORD` (optional, avoid plain text when possible)
+
+Selection logic:
+
+1. If `MYSQL_LOGIN_PATH` is set, script connects using `mysql --login-path=<value>`.
+2. Otherwise, script uses host/port/user/database from `default.env`.
+3. Environment variables override `default.env` values, so you can run one-off against another instance without editing files.
+
+Examples:
+
+- Use login-path:
+	- `MYSQL_LOGIN_PATH=prod_obsv ./run_oneoff.sh`
+- Use direct host override:
+	- `MYSQL_HOST=10.20.30.40 MYSQL_PORT=3306 MYSQL_USER=cpf_reader MYSQL_DATABASE=performance_schema ./run_oneoff.sh`
+
 ## Required report sections
 - Workload summary, top SQL/ops, waits, blocking/deadlocks, long-running workload, resource pressure, and recommendations.
