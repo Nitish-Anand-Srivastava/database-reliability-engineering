@@ -2,4 +2,5 @@
 set -euo pipefail
 # Cron example (every 30 minutes):
 # */30 * * * * /path/to/run_oneoff.sh
-echo "Configure your scheduler to run run_oneoff.sh every 30 minutes."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "Configure your scheduler to run ${SCRIPT_DIR}/run_oneoff.sh every 30 minutes."

@@ -14,9 +14,20 @@ Generate AWR-style HTML performance insights for **mysql** with default **30-min
 
 ## Quick start (junior DBA)
 1. Edit `config/default.env` (connection/profile values).
-2. Run one-off: `cd .../mysql/scripts && ./run_oneoff.sh`.
-3. Schedule every 30 minutes via cron/Task Scheduler using `schedule_30m.sh` guidance.
-4. Run retention cleanup daily via `cleanup_retention.sh`.
+2. Ensure scripts are executable: `chmod 750 scripts/*.sh`.
+3. Ensure Linux line endings if files were copied from Windows: `sed -i 's/\r$//' scripts/*.sh`.
+4. Run one-off: `cd .../mysql/scripts && ./run_oneoff.sh`.
+5. Schedule every 30 minutes via cron/Task Scheduler using `schedule_30m.sh` guidance.
+6. Run retention cleanup daily via `cleanup_retention.sh`.
+
+## Troubleshooting
+
+- Symptom: `No such file or directory` when running `./run_oneoff.sh`
+	- Likely cause: CRLF line endings on Linux shell scripts.
+	- Fix: `sed -i 's/\r$//' scripts/*.sh`
+- Symptom: `Permission denied`
+	- Likely cause: execute bit not set.
+	- Fix: `chmod 750 scripts/*.sh`
 
 ## Modes
 - Scheduled mode: `RUN_MODE=scheduled` (default)
