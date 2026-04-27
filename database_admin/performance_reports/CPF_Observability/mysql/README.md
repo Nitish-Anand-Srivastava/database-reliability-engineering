@@ -31,6 +31,9 @@ Generate AWR-style HTML performance insights for **mysql** with default **30-min
 - Symptom: `: command not found .../config/default.env: line N`
 	- Likely cause: `default.env` has CRLF or hidden BOM characters.
 	- Fix: `sed -i 's/\r$//' config/default.env`
+- Symptom: `ERROR 1146 ... performance_schema.global_status doesn't exist`
+	- Likely cause: server flavor/version does not expose that table.
+	- Fix: use `SHOW GLOBAL STATUS` based report queries (already updated in `reports/report_queries.sql`).
 
 ## Modes
 - Scheduled mode: `RUN_MODE=scheduled` (default)
