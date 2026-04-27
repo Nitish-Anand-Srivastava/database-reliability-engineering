@@ -1,7 +1,7 @@
 # CPF_Observability - mysql
 
 ## Purpose
-Generate AWR-style HTML performance insights for **mysql** with default **30-minute snapshots** and **7-day retention**.
+Generate AWR-style performance insights for **mysql** with default **30-minute snapshots** and **7-day retention**, including detailed **TXT** and **HTML** reports.
 
 ## Paths
 - Config: `database_admin/performance_reports/CPF_Observability/mysql/config/default.env`
@@ -9,7 +9,8 @@ Generate AWR-style HTML performance insights for **mysql** with default **30-min
 - Report datasets: `database_admin/performance_reports/CPF_Observability/mysql/reports/`
 - Scripts: `database_admin/performance_reports/CPF_Observability/mysql/scripts/`
 - Snapshot storage: `database_admin/performance_reports/CPF_Observability/mysql/data/snapshots/`
-- HTML output: `database_admin/performance_reports/CPF_Observability/mysql/data/reports/`
+- TXT output: `database_admin/performance_reports/CPF_Observability/mysql/data/reports/report_<timestamp>.txt`
+- HTML output: `database_admin/performance_reports/CPF_Observability/mysql/data/reports/report_<timestamp>.html`
 - Logs: `database_admin/performance_reports/CPF_Observability/mysql/logs/`
 
 ## Quick start (junior DBA)
@@ -65,3 +66,20 @@ Examples:
 
 ## Required report sections
 - Workload summary, top SQL/ops, waits, blocking/deadlocks, long-running workload, resource pressure, and recommendations.
+
+## Detailed report contents (AWR-style)
+
+The one-off run now captures and writes both TXT and HTML reports with these sections:
+
+- Instance identity and version
+- Uptime and connection pressure
+- Workload volume and throughput counters
+- Temporary object and sort pressure
+- InnoDB buffer and IO signals
+- Lock wait and deadlock counters
+- Current long-running sessions
+- Active lock wait chains
+- Top SQL by total time
+- Top SQL by errors and rows examined
+- Replication summary (MySQL 8 and 5.7 compatible attempts)
+- InnoDB engine status
