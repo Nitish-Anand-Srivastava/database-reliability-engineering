@@ -1,0 +1,48 @@
+# CDC configuration for SQL Server to Azure SQL Hyperscale
+# Author: Nitish Anand Srivastava
+
+source:
+  host: ONPREM-SQL01
+  port: 1433
+  database: SalesDB
+  auth_mode: Integrated
+  cdc_capture_instances:
+    - dbo_orders
+    - dbo_order_items
+    - dbo_payments
+    - dbo_shipments
+
+watermark:
+  start_lsn: "00000026000000450004"
+  checkpoint_table: dbo.cdc_checkpoint
+  checkpoint_interval_seconds: 30
+
+extractor:
+  poll_interval_seconds: 5
+  max_batch_rows: 10000
+  output_queue_file: logs/cdc_changes.jsonl
+  dead_letter_file: logs/cdc_dead_letter.jsonl
+  retry:
+    max_attempts: 5
+    base_delay_seconds: 2
+    max_delay_seconds: 30
+
+replay:
+  target_server: hyperscale-prod.database.windows.net
+  target_database: SalesDB
+  auth_mode: AzureAD
+  batch_size: 5000
+  transaction_timeout_seconds: 120
+  idempotency_mode: upsert
+  conflict_policy: skip_and_log
+
+monitoring:
+  lag_target_minutes: 5
+  lag_alert_minutes: 15
+  replay_error_rate_alert_pct: 1.0
+  metrics_flush_seconds: 60
+
+cutover:
+  final_drain_required: true
+  max_final_drain_minutes: 30
+  require_zero_high_severity_validation_failures: true
