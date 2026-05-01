@@ -1,0 +1,25 @@
+# CDC configuration for MySQL -> Azure MySQL Flexible Server
+# Author: Nitish Anand Srivastava
+
+source:
+  host: onprem-mysql01
+  port: 3306
+  database: salesdb
+  binlog_start_file: mysql-bin.001250
+  binlog_start_pos: 4
+
+extractor:
+  batch_size: 10000
+  poll_interval_seconds: 5
+  output_queue_file: logs/cdc_changes.jsonl
+
+replay:
+  target_host: mysql-flex-prod.mysql.database.azure.com
+  target_port: 3306
+  target_database: salesdb
+  batch_size: 5000
+  idempotency_mode: upsert
+
+monitoring:
+  lag_target_minutes: 5
+  lag_alert_minutes: 15
