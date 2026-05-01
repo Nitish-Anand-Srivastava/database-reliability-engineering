@@ -173,6 +173,102 @@ ansible db_all -m shell -a "sysctl vm.swappiness fs.file-max net.core.somaxconn"
 ansible db_all -m shell -a "ulimit -n; tuned-adm active"
 ```
 
+## Semaphore UI Runbook
+
+Use this section to create and run a Semaphore task that executes a simple Python-based mounted-disk inventory on `uk1lakehouse01.iongroup.net`.
+
+### Files Used By Semaphore
+
+- Playbook: `infrastructure/ansible/playbooks/semaphore_linux_disk_mounts.yml`
+- Script: `infrastructure/ansible/scripts/disk_mount_report.py`
+
+### What The Semaphore Task Will Do
+
+- Connects to the target Linux host using the selected Semaphore inventory and key store.
+- Ensures `python3` is installed on the host.
+- Copies `disk_mount_report.py` to `/tmp/disk_mount_report.py`.
+- Runs the script to collect mounted filesystem details using `findmnt`.
+- Writes JSON output to `/tmp/disk_mount_report.json` on the server.
+- Prints the JSON report into the Semaphore task log.
+
+### Semaphore Objects To Create
+
+Create these objects in the `Lakehouse` project:
+
+1. Inventory
+
+```ini
+uk1lakehouse01.iongroup.net ansible_user=root ansible_python_interpreter=/usr/bin/python3
+```
+
+Use key store: `root for UK1 Dev`
+
+2. Variable group
+
+Name suggestion: `uk1lakehouse01-dev`
+
+JSON variables:
+
+```json
+{
+	"TARGET_HOST": "uk1lakehouse01.iongroup.net",
+	"COLLECTION_NAME": "disk_mount_report",
+	"REMOTE_OUTPUT_PATH": "/tmp/disk_mount_report.json"
+}
+```
+
+3. Repository
+
+Point Semaphore to this repository and the branch you want to run:
+
+```text
+https://github.com/Nitish-Anand-Srivastava/database-reliability-engineering.git
+```
+
+4. Task template
+
+- App: `ansible`
+- Playbook: `infrastructure/ansible/playbooks/semaphore_linux_disk_mounts.yml`
+- Inventory: the new `uk1lakehouse01` inventory
+- Environment: `uk1lakehouse01-dev`
+- Repository: `database-reliability-engineering`
+
+### How To Run It
+
+1. Sync the repository in Semaphore so the new playbook/script are available.
+2. Open the task template.
+3. Launch the task.
+4. Review the task log for the JSON payload.
+5. Optionally verify on the target host:
+
+```bash
+cat /tmp/disk_mount_report.json
+```
+
+### Expected Output Shape
+
+The task log and `/tmp/disk_mount_report.json` will contain JSON like this:
+
+```json
+{
+	"host": "uk1lakehouse01.iongroup.net",
+	"platform": "Linux-...",
+	"generated_at_utc": "2026-05-01T12:00:00+00:00",
+	"mounts": [
+		{
+			"target": "/",
+			"source": "/dev/mapper/rhel-root",
+			"fstype": "xfs",
+			"size": "100G",
+			"used": "40G",
+			"avail": "60G",
+			"use%": "40%",
+			"options": "rw,relatime,seclabel,..."
+		}
+	]
+}
+```
+
 ## Notes
 
 - Oracle enterprise media handling is environment-specific and license-controlled.

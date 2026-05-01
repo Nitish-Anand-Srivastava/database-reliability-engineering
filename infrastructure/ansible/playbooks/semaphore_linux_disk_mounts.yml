@@ -1,0 +1,35 @@
+- name: Collect mounted disk details from Linux hosts
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    remote_script_path: /tmp/disk_mount_report.py
+    remote_output_path: /tmp/disk_mount_report.json
+  tasks:
+    - name: Ensure Python 3 is available
+      ansible.builtin.package:
+        name: python3
+        state: present
+
+    - name: Copy disk mount report script to remote host
+      ansible.builtin.copy:
+        src: ../scripts/disk_mount_report.py
+        dest: "{{ remote_script_path }}"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Run disk mount report script
+      ansible.builtin.command:
+        cmd: "python3 {{ remote_script_path }} --output {{ remote_output_path }}"
+      register: disk_mount_report_cmd
+      changed_when: false
+
+    - name: Read generated JSON report
+      ansible.builtin.slurp:
+        src: "{{ remote_output_path }}"
+      register: disk_mount_report_file
+
+    - name: Show mounted disk report
+      ansible.builtin.debug:
+        msg: "{{ disk_mount_report_file.content | b64decode }}"
