@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-bootstrap
+  namespace: db-platform
+data:
+  bootstrap.sh: |
+    #!/bin/sh
+    set -eu
+    mkdir -p /work
+    cat > /work/pgbouncer.ini <<EOF
+    [databases]
+    ${AURORA_DATABASE:-app} = host=${AURORA_WRITER_ENDPOINT} port=${AURORA_PORT:-5432} dbname=${AURORA_DATABASE:-app} user=${AURORA_APP_USER} password=${AURORA_APP_PASSWORD} pool_size=${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/users.txt
+    admin_users = ${AURORA_APP_USER}
+    stats_users = ${AURORA_APP_USER}
+    pool_mode = transaction
+    max_client_conn = ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+    default_pool_size = ${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+    reserve_pool_size = ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+    reserve_pool_timeout = ${PGBOUNCER_RESERVE_POOL_TIMEOUT:-5}
+    server_idle_timeout = ${PGBOUNCER_SERVER_IDLE_TIMEOUT:-60}
+    server_lifetime = ${PGBOUNCER_SERVER_LIFETIME:-3600}
+    query_wait_timeout = ${PGBOUNCER_QUERY_WAIT_TIMEOUT:-30}
+    ignore_startup_parameters = extra_float_digits,search_path
+    tcp_keepalive = 1
+    tcp_keepcnt = 5
+    tcp_keepidle = 1
+    tcp_keepintvl = 1
+    logfile = /dev/stdout
+    pidfile = /tmp/pgbouncer.pid
+    EOF
+    exec pgbouncer /work/pgbouncer.ini
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: db-platform
+  labels:
+    app.kubernetes.io/name: pgbouncer
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbouncer
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: pgbouncer
+      containers:
+        - name: pgbouncer
+          image: pgbouncer/pgbouncer:1.24.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - /bootstrap/bootstrap.sh
+          envFrom:
+            - configMapRef:
+                name: aurora-platform-endpoints
+            - secretRef:
+                name: aurora-app-credentials
+          ports:
+            - containerPort: 6432
+              name: pgbouncer
+          readinessProbe:
+            tcpSocket:
+              port: 6432
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 6432
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+            - name: auth
+              mountPath: /etc/pgbouncer
+              readOnly: true
+            - name: work
+              mountPath: /work
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: pgbouncer-bootstrap
+            defaultMode: 0555
+        - name: auth
+          secret:
+            secretName: pgbouncer-auth
+        - name: work
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: db-platform
+  labels:
+    app.kubernetes.io/name: pgbouncer
+spec:
+  selector:
+    app.kubernetes.io/name: pgbouncer
+  ports:
+    - name: pgbouncer
+      port: 6432
+      targetPort: 6432
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer
+  namespace: db-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer

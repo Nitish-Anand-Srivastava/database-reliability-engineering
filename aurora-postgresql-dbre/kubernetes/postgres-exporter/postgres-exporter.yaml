@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: db-platform
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-exporter
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              export DATA_SOURCE_URI="${AURORA_WRITER_ENDPOINT}:${AURORA_PORT:-5432}/${AURORA_DATABASE}?sslmode=require"
+              exec postgres_exporter \
+                --collector.stat_statements \
+                --collector.long_running_transactions \
+                --collector.database_wraparound \
+                --collector.process_idle \
+                --collector.stat_activity_autovacuum
+          envFrom:
+            - configMapRef:
+                name: aurora-platform-endpoints
+          env:
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: aurora-platform-endpoints
+                  key: AURORA_APP_USER
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: aurora-app-credentials
+                  key: AURORA_APP_PASSWORD
+          ports:
+            - containerPort: 9187
+              name: metrics
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: db-platform
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: postgres-exporter
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: 9187
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-exporter
+  namespace: db-platform
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
