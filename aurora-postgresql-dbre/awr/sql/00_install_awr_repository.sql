@@ -670,23 +670,23 @@ BEGIN
     )
     SELECT
       v_snapshot_id,
-      dbid,
-      userid,
-      queryid,
-      calls,
-      plans,
-      total_plan_time,
-      total_exec_time,
-      rows,
-      shared_blks_hit,
-      shared_blks_read,
-      temp_blks_written,
-      blk_read_time,
-      blk_write_time,
-      wal_bytes,
-      left(regexp_replace(query, '\s+', ' ', 'g'), greatest(p_statement_text_length, 120))
-    FROM pg_stat_statements
-    ORDER BY total_exec_time DESC
+      pss.dbid,
+      pss.userid,
+      pss.queryid,
+      pss.calls,
+      pss.plans,
+      pss.total_plan_time,
+      pss.total_exec_time,
+      pss.rows,
+      pss.shared_blks_hit,
+      pss.shared_blks_read,
+      pss.temp_blks_written,
+      pss.blk_read_time,
+      pss.blk_write_time,
+      pss.wal_bytes,
+      left(regexp_replace(pss.query, '\s+', ' ', 'g'), greatest(p_statement_text_length, 120))
+    FROM pg_stat_statements AS pss
+    ORDER BY pss.total_exec_time DESC
     LIMIT greatest(p_top_sql_limit, 1);
   EXCEPTION
     WHEN undefined_table OR object_not_in_prerequisite_state THEN
