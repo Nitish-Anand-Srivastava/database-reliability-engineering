@@ -438,34 +438,100 @@ BEGIN
   WHERE datname IS NOT NULL
     AND datname NOT IN ('template0', 'template1');
 
-  INSERT INTO dbre_awr.bgwriter_stats (
-    snapshot_id,
-    checkpoints_timed,
-    checkpoints_req,
-    checkpoint_write_time,
-    checkpoint_sync_time,
-    buffers_checkpoint,
-    buffers_clean,
-    maxwritten_clean,
-    buffers_backend,
-    buffers_backend_fsync,
-    buffers_alloc,
-    stats_reset
-  )
-  SELECT
-    v_snapshot_id,
-    bg.checkpoints_timed,
-    bg.checkpoints_req,
-    bg.checkpoint_write_time,
-    bg.checkpoint_sync_time,
-    bg.buffers_checkpoint,
-    bg.buffers_clean,
-    bg.maxwritten_clean,
-    bg.buffers_backend,
-    bg.buffers_backend_fsync,
-    bg.buffers_alloc,
-    bg.stats_reset
-  FROM pg_stat_bgwriter AS bg;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute
+    WHERE attrelid = 'pg_catalog.pg_stat_bgwriter'::regclass
+      AND attname = 'checkpoints_timed'
+      AND NOT attisdropped
+  ) THEN
+    INSERT INTO dbre_awr.bgwriter_stats (
+      snapshot_id,
+      checkpoints_timed,
+      checkpoints_req,
+      checkpoint_write_time,
+      checkpoint_sync_time,
+      buffers_checkpoint,
+      buffers_clean,
+      maxwritten_clean,
+      buffers_backend,
+      buffers_backend_fsync,
+      buffers_alloc,
+      stats_reset
+    )
+    SELECT
+      v_snapshot_id,
+      bg.checkpoints_timed,
+      bg.checkpoints_req,
+      bg.checkpoint_write_time,
+      bg.checkpoint_sync_time,
+      bg.buffers_checkpoint,
+      bg.buffers_clean,
+      bg.maxwritten_clean,
+      bg.buffers_backend,
+      bg.buffers_backend_fsync,
+      bg.buffers_alloc,
+      bg.stats_reset
+    FROM pg_stat_bgwriter AS bg;
+  ELSIF to_regclass('pg_catalog.pg_stat_checkpointer') IS NOT NULL THEN
+    INSERT INTO dbre_awr.bgwriter_stats (
+      snapshot_id,
+      checkpoints_timed,
+      checkpoints_req,
+      checkpoint_write_time,
+      checkpoint_sync_time,
+      buffers_checkpoint,
+      buffers_clean,
+      maxwritten_clean,
+      buffers_backend,
+      buffers_backend_fsync,
+      buffers_alloc,
+      stats_reset
+    )
+    SELECT
+      v_snapshot_id,
+      cp.num_timed,
+      cp.num_requested,
+      cp.write_time,
+      cp.sync_time,
+      cp.buffers_written,
+      bg.buffers_clean,
+      bg.maxwritten_clean,
+      NULL::bigint,
+      NULL::bigint,
+      bg.buffers_alloc,
+      coalesce(cp.stats_reset, bg.stats_reset)
+    FROM pg_stat_checkpointer AS cp
+    CROSS JOIN pg_stat_bgwriter AS bg;
+  ELSE
+    INSERT INTO dbre_awr.bgwriter_stats (
+      snapshot_id,
+      checkpoints_timed,
+      checkpoints_req,
+      checkpoint_write_time,
+      checkpoint_sync_time,
+      buffers_checkpoint,
+      buffers_clean,
+      maxwritten_clean,
+      buffers_backend,
+      buffers_backend_fsync,
+      buffers_alloc,
+      stats_reset
+    )
+    SELECT
+      v_snapshot_id,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::double precision,
+      NULL::double precision,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::bigint,
+      NULL::timestamptz;
+  END IF;
 
   INSERT INTO dbre_awr.wal_stats (
     snapshot_id,
