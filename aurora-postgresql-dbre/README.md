@@ -19,6 +19,16 @@ aurora-postgresql-dbre/
 |   |-- generate_pgbouncer_scram.py
 |   |-- run_sql_bundle.ps1
 |   `-- run_sql_bundle.sh
+|-- awr/
+|   |-- README.md
+|   |-- config/
+|   |   `-- awr_report.env
+|   |-- scripts/
+|   |   |-- aurora_awr.py
+|   |   |-- awrctl.sh
+|   |   `-- install_awr_cron.sh
+|   `-- sql/
+|       `-- 00_install_awr_repository.sql
 |-- docs/
 |   `-- architecture.md
 |-- infrastructure/
@@ -94,7 +104,8 @@ flowchart LR
 2. Create the Kubernetes ConfigMaps and Secrets referenced by the manifests.
 3. Deploy PgBouncer and `postgres_exporter` to EKS.
 4. Run the SQL bundle with `automation/run_sql_bundle.sh` or `automation/run_sql_bundle.ps1`.
-5. Import the Grafana dashboard and apply the Prometheus rule file.
+5. Install the AWR-style repository in `awr/sql/00_install_awr_repository.sql` if interval reporting is required.
+6. Import the Grafana dashboard and apply the Prometheus rule file.
 
 ## SQL diagnostics workflow
 

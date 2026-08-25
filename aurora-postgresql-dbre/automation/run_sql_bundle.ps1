@@ -17,7 +17,7 @@ if (-not $env:DATABASE_URL -and -not $env:PGHOST) {
 }
 
 Get-ChildItem -Path $sqlDir -Filter *.sql |
-    Where-Object { $_.Name -notlike '90_*' } |
+    Where-Object { $_.Name -notlike '90_*' -and $_.Name -ne 'install_dbre_diag.sql' } |
     Sort-Object Name |
     ForEach-Object {
         Write-Host "Running $($_.Name)"
