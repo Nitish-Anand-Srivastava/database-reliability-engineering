@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Aurora PostgreSQL AWR-style snapshot and HTML report runner."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import datetime as dt
@@ -13,7 +11,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -21,8 +19,8 @@ DEFAULT_CONFIG = ROOT_DIR / "config" / "awr_report.env"
 DEFAULT_SQL_INSTALL = ROOT_DIR / "sql" / "00_install_awr_repository.sql"
 
 
-def load_env_file(path: Path) -> dict[str, str]:
-    config: dict[str, str] = {}
+def load_env_file(path: Path) -> Dict[str, str]:
+    config = {}  # type: Dict[str, str]
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -32,7 +30,7 @@ def load_env_file(path: Path) -> dict[str, str]:
     return config
 
 
-def merged_env(config: dict[str, str]) -> dict[str, str]:
+def merged_env(config: Dict[str, str]) -> Dict[str, str]:
     env = os.environ.copy()
     for key, value in config.items():
         if value:
@@ -40,7 +38,7 @@ def merged_env(config: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def psql_base_command(config: dict[str, str]) -> list[str]:
+def psql_base_command(config: Dict[str, str]) -> List[str]:
     cmd = [config.get("PSQL_BIN", "psql"), "-X", "-v", "ON_ERROR_STOP=1", "-q"]
     database_url = config.get("DATABASE_URL", "")
     if database_url:
@@ -48,7 +46,7 @@ def psql_base_command(config: dict[str, str]) -> list[str]:
     return cmd
 
 
-def run_psql_sql(config: dict[str, str], sql: str, tuples_only: bool = False) -> str:
+def run_psql_sql(config: Dict[str, str], sql: str, tuples_only: bool = False) -> str:
     cmd = psql_base_command(config)
     if tuples_only:
         cmd.extend(["-t", "-A"])
@@ -56,8 +54,9 @@ def run_psql_sql(config: dict[str, str], sql: str, tuples_only: bool = False) ->
     result = subprocess.run(
         cmd,
         env=merged_env(config),
-        capture_output=True,
-        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
         check=False,
     )
     if result.returncode != 0:
@@ -65,35 +64,37 @@ def run_psql_sql(config: dict[str, str], sql: str, tuples_only: bool = False) ->
     return result.stdout.strip()
 
 
-def run_psql_file(config: dict[str, str], sql_file: Path) -> None:
+def run_psql_file(config: Dict[str, str], sql_file: Path) -> None:
     cmd = psql_base_command(config)
     cmd.extend(["-f", str(sql_file)])
     result = subprocess.run(
         cmd,
         env=merged_env(config),
-        capture_output=True,
-        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
         check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip())
 
 
-def query_scalar(config: dict[str, str], sql: str) -> str | None:
+def query_scalar(config: Dict[str, str], sql: str) -> Optional[str]:
     output = run_psql_sql(config, sql, tuples_only=True)
     if not output:
         return None
     return output.splitlines()[-1].strip() or None
 
 
-def query_csv(config: dict[str, str], sql: str) -> list[dict[str, str]]:
+def query_csv(config: Dict[str, str], sql: str) -> List[Dict[str, str]]:
     cmd = psql_base_command(config)
     cmd.extend(["-c", f"COPY ({sql}) TO STDOUT WITH CSV HEADER"])
     result = subprocess.run(
         cmd,
         env=merged_env(config),
-        capture_output=True,
-        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
         check=False,
     )
     if result.returncode != 0:
@@ -108,7 +109,7 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def state_file(config: dict[str, str]) -> Path:
+def state_file(config: Dict[str, str]) -> Path:
     return Path(config["STATE_DIR"]) / "manual_interval.json"
 
 
@@ -121,7 +122,7 @@ def sql_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def take_snapshot(config: dict[str, str], label: str | None, snapshot_type: str) -> int:
+def take_snapshot(config: Dict[str, str], label: Optional[str], snapshot_type: str) -> int:
     safe_label = "NULL" if label is None else sql_quote(label)
     safe_snapshot_type = sql_quote(snapshot_type)
     sql = (
@@ -138,7 +139,7 @@ def take_snapshot(config: dict[str, str], label: str | None, snapshot_type: str)
     return int(value)
 
 
-def previous_snapshot(config: dict[str, str], snapshot_type: str, before_snapshot_id: int) -> int | None:
+def previous_snapshot(config: Dict[str, str], snapshot_type: str, before_snapshot_id: int) -> Optional[int]:
     safe_snapshot_type = sql_quote(snapshot_type)
     sql = (
         "SELECT snapshot_id "
@@ -151,7 +152,7 @@ def previous_snapshot(config: dict[str, str], snapshot_type: str, before_snapsho
     return int(value) if value else None
 
 
-def clean_old_reports(config: dict[str, str]) -> None:
+def clean_old_reports(config: Dict[str, str]) -> None:
     output_dir = Path(config["OUTPUT_DIR"])
     if not output_dir.exists():
         return
@@ -163,12 +164,12 @@ def clean_old_reports(config: dict[str, str]) -> None:
             path.unlink()
 
 
-def html_table(title: str, rows: list[dict[str, str]]) -> str:
+def html_table(title: str, rows: List[Dict[str, str]]) -> str:
     if not rows:
         return f"<section><h2>{html.escape(title)}</h2><p>No rows returned.</p></section>"
     headers = list(rows[0].keys())
     thead = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
-    tbody_rows: list[str] = []
+    tbody_rows = []  # type: List[str]
     for row in rows:
         cells = "".join(f"<td>{html.escape(row.get(header, ''))}</td>" for header in headers)
         tbody_rows.append(f"<tr>{cells}</tr>")
@@ -181,7 +182,7 @@ def html_table(title: str, rows: list[dict[str, str]]) -> str:
     )
 
 
-def render_report(title: str, summary_rows: list[dict[str, str]], sections: Iterable[str]) -> str:
+def render_report(title: str, summary_rows: List[Dict[str, str]], sections: Iterable[str]) -> str:
     generated_at = dt.datetime.now(dt.timezone.utc).isoformat()
     summary_html = html_table("Interval summary", summary_rows)
     body_sections = summary_html + "".join(sections)
@@ -247,7 +248,7 @@ def render_report(title: str, summary_rows: list[dict[str, str]], sections: Iter
 """
 
 
-def configuration_review_rows(config: dict[str, str], end_snapshot_id: int) -> list[dict[str, str]]:
+def configuration_review_rows(config: Dict[str, str], end_snapshot_id: int) -> List[Dict[str, str]]:
     rows = query_csv(
         config,
         f"""
@@ -313,7 +314,7 @@ def configuration_review_rows(config: dict[str, str], end_snapshot_id: int) -> l
     return rows
 
 
-def build_report(config: dict[str, str], start_id: int, end_id: int, output_path: Path | None = None) -> Path:
+def build_report(config: Dict[str, str], start_id: int, end_id: int, output_path: Optional[Path] = None) -> Path:
     summary_rows = query_csv(
         config,
         f"""
@@ -583,7 +584,7 @@ def build_report(config: dict[str, str], start_id: int, end_id: int, output_path
     return output_path
 
 
-def manual_start(config: dict[str, str], label: str | None) -> int:
+def manual_start(config: Dict[str, str], label: Optional[str]) -> int:
     ensure_dir(Path(config["STATE_DIR"]))
     state_path = state_file(config)
     if state_path.exists():
@@ -596,7 +597,7 @@ def manual_start(config: dict[str, str], label: str | None) -> int:
     return snapshot_id
 
 
-def manual_end(config: dict[str, str], label: str | None) -> tuple[int, int, Path]:
+def manual_end(config: Dict[str, str], label: Optional[str]) -> Tuple[int, int, Path]:
     state_path = state_file(config)
     if not state_path.exists():
         raise RuntimeError("no manual interval state file found")
@@ -609,7 +610,7 @@ def manual_end(config: dict[str, str], label: str | None) -> tuple[int, int, Pat
     return start_snapshot_id, end_snapshot_id, report_path
 
 
-def auto_run(config: dict[str, str], label: str | None) -> tuple[int, int | None, Path | None]:
+def auto_run(config: Dict[str, str], label: Optional[str]) -> Tuple[int, Optional[int], Optional[Path]]:
     snapshot_id = take_snapshot(config, label, "auto")
     previous_id = previous_snapshot(config, "auto", snapshot_id)
     if previous_id is None:
@@ -623,7 +624,7 @@ def auto_run(config: dict[str, str], label: str | None) -> tuple[int, int | None
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aurora PostgreSQL AWR-style report runner")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG), help="Path to env-style config file")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("install-sql", help="Install snapshot schema and SQL objects")
 
@@ -645,7 +646,10 @@ def parse_args() -> argparse.Namespace:
     report.add_argument("--end-id", type=int, required=True)
     report.add_argument("--output", default=None)
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.command:
+        parser.error("a command is required")
+    return args
 
 
 def main() -> int:
