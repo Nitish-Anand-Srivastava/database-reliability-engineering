@@ -33,7 +33,7 @@ awr/
 
 1. Aurora PostgreSQL 16+.
 2. `pg_stat_statements` enabled in the cluster parameter group.
-3. `psql` installed on the Linux host that will run the reports.
+3. Python **3.6+** and `psql` installed on the Linux host that will run the reports.
 4. A database role with access to:
    - `pg_stat_activity`
    - `pg_stat_statements`
@@ -45,6 +45,32 @@ awr/
    - `pg_replication_slots`
    - `pg_stat_user_tables`
    - `pg_stat_user_indexes`
+
+## Download only this folder on Linux
+
+If you only want the AWR tooling and do not want to clone the repository, first extract `aurora-postgresql-dbre/` and then work from the `awr/` subfolder.
+
+### Upstream `main`
+
+```bash
+mkdir -p /opt/aurora-postgresql-dbre
+cd /opt/aurora-postgresql-dbre
+curl -L https://github.com/Nitish-Anand-Srivastava/database-reliability-engineering/tarball/main \
+  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
+cd /opt/aurora-postgresql-dbre/awr
+```
+
+### Current feature branch
+
+Use this if you want the newest branch content before it lands on upstream `main`.
+
+```bash
+mkdir -p /opt/aurora-postgresql-dbre
+cd /opt/aurora-postgresql-dbre
+curl -L https://github.com/nitishanandsrivastava/database-reliability-engineering/tarball/nitish-a-srivastava-ion-aurora-dbre-framework \
+  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
+cd /opt/aurora-postgresql-dbre/awr
+```
 
 ## Configuration
 

@@ -11,6 +11,32 @@ This bundle turns the repository into a focused **Aurora PostgreSQL reliability 
 - **Zero-downtime DDL guardrails**: the SQL bundle bakes in `lock_timeout`, `CREATE INDEX CONCURRENTLY`, `NOT VALID`/`VALIDATE CONSTRAINT`, and fillfactor/HOT checks because those patterns materially reduce lock risk on busy Aurora writers.
 - **DynamoDB kept purpose-built**: the included table is intentionally access-pattern driven for migration coordination and cutover metadata instead of a generic relational mirror.
 
+## Quick download on Linux
+
+If you do **not** want to clone the full repository, you can download and extract only `aurora-postgresql-dbre/` with `curl` and `tar`.
+
+### Download from upstream `main`
+
+```bash
+mkdir -p /opt/aurora-postgresql-dbre
+cd /opt/aurora-postgresql-dbre
+curl -L https://github.com/Nitish-Anand-Srivastava/database-reliability-engineering/tarball/main \
+  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
+```
+
+### Download this feature branch directly
+
+Use this if you want the newest branch content before it lands on upstream `main`.
+
+```bash
+mkdir -p /opt/aurora-postgresql-dbre
+cd /opt/aurora-postgresql-dbre
+curl -L https://github.com/nitishanandsrivastava/database-reliability-engineering/tarball/nitish-a-srivastava-ion-aurora-dbre-framework \
+  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
+```
+
+After extraction, the folder layout under `/opt/aurora-postgresql-dbre` will be the contents of `aurora-postgresql-dbre/` itself, including `sql/`, `awr/`, `kubernetes/`, and `infrastructure/`.
+
 ## Folder map
 
 ```text
