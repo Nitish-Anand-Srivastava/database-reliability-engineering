@@ -438,9 +438,8 @@ BEGIN
   WHERE datname IS NOT NULL
     AND datname NOT IN ('template0', 'template1');
 
-  INSERT INTO dbre_awr.bgwriter_stats
-  SELECT
-    v_snapshot_id,
+  INSERT INTO dbre_awr.bgwriter_stats (
+    snapshot_id,
     checkpoints_timed,
     checkpoints_req,
     checkpoint_write_time,
@@ -452,11 +451,24 @@ BEGIN
     buffers_backend_fsync,
     buffers_alloc,
     stats_reset
-  FROM pg_stat_bgwriter;
-
-  INSERT INTO dbre_awr.wal_stats
+  )
   SELECT
     v_snapshot_id,
+    bg.checkpoints_timed,
+    bg.checkpoints_req,
+    bg.checkpoint_write_time,
+    bg.checkpoint_sync_time,
+    bg.buffers_checkpoint,
+    bg.buffers_clean,
+    bg.maxwritten_clean,
+    bg.buffers_backend,
+    bg.buffers_backend_fsync,
+    bg.buffers_alloc,
+    bg.stats_reset
+  FROM pg_stat_bgwriter AS bg;
+
+  INSERT INTO dbre_awr.wal_stats (
+    snapshot_id,
     wal_records,
     wal_fpi,
     wal_bytes,
@@ -466,7 +478,19 @@ BEGIN
     wal_write_time,
     wal_sync_time,
     stats_reset
-  FROM pg_stat_wal;
+  )
+  SELECT
+    v_snapshot_id,
+    wal.wal_records,
+    wal.wal_fpi,
+    wal.wal_bytes,
+    wal.wal_buffers_full,
+    wal.wal_write,
+    wal.wal_sync,
+    wal.wal_write_time,
+    wal.wal_sync_time,
+    wal.stats_reset
+  FROM pg_stat_wal AS wal;
 
   INSERT INTO dbre_awr.table_stats (
     snapshot_id,
@@ -619,18 +643,18 @@ BEGIN
   )
   SELECT
     v_snapshot_id,
-    application_name,
-    coalesce(client_addr::text, 'local'),
-    state,
-    sync_state,
-    write_lag,
-    flush_lag,
-    replay_lag,
-    sent_lsn,
-    write_lsn,
-    flush_lsn,
-    replay_lsn
-  FROM pg_stat_replication;
+    rep.application_name,
+    coalesce(rep.client_addr::text, 'local'),
+    rep.state,
+    rep.sync_state,
+    rep.write_lag,
+    rep.flush_lag,
+    rep.replay_lag,
+    rep.sent_lsn,
+    rep.write_lsn,
+    rep.flush_lsn,
+    rep.replay_lsn
+  FROM pg_stat_replication AS rep;
 
   INSERT INTO dbre_awr.replication_slots (
     snapshot_id,
@@ -645,15 +669,15 @@ BEGIN
   )
   SELECT
     v_snapshot_id,
-    slot_name,
-    slot_type,
-    active,
-    wal_status,
-    safe_wal_size,
-    restart_lsn,
-    confirmed_flush_lsn,
-    inactive_since
-  FROM pg_replication_slots;
+    slot.slot_name,
+    slot.slot_type,
+    slot.active,
+    slot.wal_status,
+    slot.safe_wal_size,
+    slot.restart_lsn,
+    slot.confirmed_flush_lsn,
+    slot.inactive_since
+  FROM pg_replication_slots AS slot;
 
   BEGIN
     INSERT INTO dbre_awr.io_stats (
@@ -675,21 +699,21 @@ BEGIN
     )
     SELECT
       v_snapshot_id,
-      backend_type,
-      object,
-      context,
-      reads,
-      read_time,
-      writes,
-      write_time,
-      writebacks,
-      extends,
-      hits,
-      evictions,
-      reuses,
-      fsyncs,
-      stats_reset
-    FROM pg_stat_io;
+      io.backend_type,
+      io.object,
+      io.context,
+      io.reads,
+      io.read_time,
+      io.writes,
+      io.write_time,
+      io.writebacks,
+      io.extends,
+      io.hits,
+      io.evictions,
+      io.reuses,
+      io.fsyncs,
+      io.stats_reset
+    FROM pg_stat_io AS io;
   EXCEPTION
     WHEN undefined_table THEN
       RAISE NOTICE 'pg_stat_io snapshot skipped: %', SQLERRM;
