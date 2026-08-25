@@ -1,0 +1,62 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aurora-postgresql-dbre
+  namespace: db-platform
+spec:
+  groups:
+    - name: aurora-postgresql-dbre
+      rules:
+        - alert: AuroraDatabaseDown
+          expr: max by (instance) (pg_up) == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Aurora PostgreSQL is unreachable from postgres_exporter
+            description: Confirm writer health, RDS events, and whether RDS Proxy or Security Group changes are blocking traffic.
+
+        - alert: AuroraConnectionSaturation
+          expr: (sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections)) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Aurora connection usage is above 80%
+            description: Correlate with RDS Proxy client/database connections and Performance Insights AAS to confirm connection churn versus real workload growth.
+
+        - alert: AuroraBlockedSessionsHigh
+          expr: sum by (instance) (pg_locks_count{granted="false"}) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Aurora has more than five waiting locks
+            description: Run the lock tracing SQL bundle and inspect the blocker session before terminating anything.
+
+        - alert: AuroraLongRunningTransaction
+          expr: max by (instance) (pg_stat_activity_max_tx_duration{state="active"}) > 300
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Aurora has an active transaction older than five minutes
+            description: Long transactions delay vacuum cleanup, increase bloat risk, and often pin RDS Proxy sessions.
+
+        - alert: AuroraReplicationLag
+          expr: max by (instance) (pg_replication_lag) > 10
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Aurora replica lag is above ten seconds
+            description: Check reader pressure, vacuum conflicts, network issues, and CloudWatch lag metrics before failover decisions.
+
+        - alert: AuroraAutovacuumDebt
+          expr: max by (instance, datname) (pg_stat_user_tables_n_dead_tup) > 1000000
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Aurora dead tuple debt is accumulating
+            description: Review HOT ratio, fillfactor, and long transactions, then verify autovacuum workers are making progress.

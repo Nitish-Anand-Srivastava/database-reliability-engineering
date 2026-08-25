@@ -97,6 +97,8 @@ Use this map to quickly find the right content by objective:
 	- `data-platform/`, `data_engineering/`, `pipelines/`
 - HA/DR and failover automation:
 	- `ha-failover/`, `cloud-migration/`, `infrastructure/`
+- Aurora PostgreSQL DBRE framework:
+	- `aurora-postgresql-dbre/`
 - Architecture and reference guides:
 	- `docs/`
 - Performance and guardrails:
@@ -183,6 +185,7 @@ Suggested progression for structured learning and interview preparation:
 
 ### Platform Engineering
 - Terraform modules
+- Aurora PostgreSQL, RDS Proxy, DynamoDB, and ElastiCache reference stack
 - Kubernetes deployment
 - Docker sandbox
 
@@ -190,6 +193,7 @@ Suggested progression for structured learning and interview preparation:
 - Pipeline freshness
 - Schema drift
 - Data contracts
+- Aurora PostgreSQL DBRE dashboard, Prometheus alerts, and exporter patterns
 
 ---
 
