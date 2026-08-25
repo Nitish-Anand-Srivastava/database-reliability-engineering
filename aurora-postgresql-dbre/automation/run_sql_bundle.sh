@@ -16,6 +16,9 @@ if [[ -z "${DATABASE_URL:-}" && -z "${PGHOST:-}" ]]; then
 fi
 
 for sql_file in "${SQL_DIR}"/*.sql; do
+  if [[ "$(basename "${sql_file}")" == 90_* ]]; then
+    continue
+  fi
   echo "Running $(basename "${sql_file}")"
   "${PSQL_BIN}" -v ON_ERROR_STOP=1 -f "${sql_file}"
 done

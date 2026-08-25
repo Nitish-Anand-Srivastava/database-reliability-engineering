@@ -17,6 +17,7 @@ if (-not $env:DATABASE_URL -and -not $env:PGHOST) {
 }
 
 Get-ChildItem -Path $sqlDir -Filter *.sql |
+    Where-Object { $_.Name -notlike '90_*' } |
     Sort-Object Name |
     ForEach-Object {
         Write-Host "Running $($_.Name)"

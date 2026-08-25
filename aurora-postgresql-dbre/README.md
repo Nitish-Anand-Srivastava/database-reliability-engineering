@@ -51,10 +51,22 @@ aurora-postgresql-dbre/
 `-- sql/
     `-- aurora_postgresql/
         |-- 00_enable_pg_stat_statements.sql
-        |-- 10_lock_tracing.sql
-        |-- 20_bloat_and_hot_analysis.sql
-        |-- 30_statement_latency_percentiles.sql
-        `-- 40_zero_downtime_ddl_patterns.sql
+        |-- 05_install_dbre_diagnostics.sql
+    |-- 10_lock_tracing.sql
+    |-- 11_instance_overview.sql
+    |-- 12_who_is_active.sql
+    |-- 13_blocking_and_waits.sql
+    |-- 14_database_pressure.sql
+    |-- 15_pg_stat_statements_review.sql
+    |-- 16_table_churn_and_hot_updates.sql
+    |-- 17_vacuum_freeze_and_stats_gaps.sql
+    |-- 18_index_and_io_review.sql
+    |-- 19_replication_and_slots.sql
+    |-- 20_bloat_and_hot_analysis.sql
+    |-- 20_configuration_gap_review.sql
+    |-- 30_statement_latency_percentiles.sql
+    |-- 40_zero_downtime_ddl_patterns.sql
+    `-- 90_consultant_full_review.sql
 ```
 
 ## How the pieces fit
@@ -83,6 +95,32 @@ flowchart LR
 3. Deploy PgBouncer and `postgres_exporter` to EKS.
 4. Run the SQL bundle with `automation/run_sql_bundle.sh` or `automation/run_sql_bundle.ps1`.
 5. Import the Grafana dashboard and apply the Prometheus rule file.
+
+## SQL diagnostics workflow
+
+The Aurora SQL bundle now supports two review styles:
+
+1. **Full consultant walkthrough**: run `sql/aurora_postgresql/90_consultant_full_review.sql` in `psql`.
+2. **Step-by-step deep dives**:
+   - `00_enable_pg_stat_statements.sql`
+   - `05_install_dbre_diagnostics.sql`
+   - `11_instance_overview.sql`
+   - `12_who_is_active.sql`
+   - `13_blocking_and_waits.sql`
+   - `14_database_pressure.sql`
+   - `15_pg_stat_statements_review.sql`
+   - `16_table_churn_and_hot_updates.sql`
+   - `17_vacuum_freeze_and_stats_gaps.sql`
+   - `18_index_and_io_review.sql`
+   - `19_replication_and_slots.sql`
+   - `20_configuration_gap_review.sql`
+3. **Focused extras**:
+   - `10_lock_tracing.sql`
+   - `20_bloat_and_hot_analysis.sql`
+   - `30_statement_latency_percentiles.sql`
+   - `40_zero_downtime_ddl_patterns.sql`
+
+`05_install_dbre_diagnostics.sql` installs reusable `dbre.*` helper functions, including a PostgreSQL-native **`dbre.who_is_active()`** snapshot intended to play the same role for Aurora PostgreSQL that `sp_WhoIsActive` does for SQL Server.
 
 ## Intentional non-goals
 

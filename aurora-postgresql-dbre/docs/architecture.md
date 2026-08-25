@@ -63,7 +63,7 @@ Use **RDS Proxy** as the canonical application endpoint. Keep **PgBouncer** for 
 | `infrastructure/terraform/modules/elasticache_redis` | Multi-AZ Redis replication group with encryption |
 | `kubernetes/pgbouncer` | EKS deployment with health probes, PDB, and templated config |
 | `kubernetes/postgres-exporter` | Writer-side exporter deployment and Prometheus Operator ServiceMonitor |
-| `sql/aurora_postgresql` | Operational SQL for visibility, migration guardrails, and performance posture |
+| `sql/aurora_postgresql` | Consultant-style diagnostics, reusable helper functions, migration guardrails, and performance posture |
 | `observability` | Grafana dashboard plus alert rules that map to DBRE actions |
 | `automation` | Secret-material generation and repeatable SQL bundle execution |
 
@@ -96,3 +96,17 @@ The script prompts for the password and emits a PgBouncer-compatible SCRAM line.
 - Aurora parameter group enables `pg_stat_statements`, `log_connections`, `log_disconnections`, and `track_io_timing`
 - SQL bundle uses `ON_ERROR_STOP`, short `lock_timeout`, and concurrent index creation
 - Prometheus alerts are tuned toward symptoms that warrant action, not low-signal noise
+
+## SQL review model
+
+The SQL diagnostics pack is meant to support a **first-hours-on-the-box** Aurora review:
+
+- establish platform and parameter posture
+- snapshot active sessions and blockers
+- identify wait-heavy and churn-heavy tables
+- review `pg_stat_statements` for expensive SQL
+- inspect vacuum, freeze-age, and stale-stats gaps
+- find large low-value indexes and IO hotspots
+- validate replica and slot posture
+
+For repeatability, the helper functions live in the `dbre` schema and the step scripts are ordered so a consultant can run them top to bottom in `psql`.
