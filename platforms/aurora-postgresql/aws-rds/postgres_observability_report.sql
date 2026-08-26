@@ -152,7 +152,7 @@ SELECT
            ELSE 'OK' END
     WHEN 'wal_buffers' THEN
       CASE WHEN s.setting::int = -1 THEN 'OK'
-           WHEN s.setting::int * COALESCE(NULLIF(s.unit,''), '1')::int >= 16384 THEN 'OK'
+           WHEN s.setting::int >= 2048 THEN 'OK'
            ELSE 'WARNING' END
     ELSE 'OK'
   END AS assessment,
@@ -197,7 +197,7 @@ SELECT
     WHEN 'log_checkpoints'  THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'INFO - enable for checkpoint visibility' END
     WHEN 'log_connections'  THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'INFO' END
     WHEN 'log_lock_waits'   THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'WARNING - lock waits will be silent' END
-    WHEN 'log_temp_files'   THEN CASE WHEN setting::int >= 0 AND setting::int <= 1024 THEN 'OK' ELSE 'WARNING - temp file logging may be too noisy or disabled' END
+    WHEN 'log_temp_files'   THEN CASE WHEN setting = '-1' THEN 'WARNING - temp file logging disabled' ELSE 'OK - logging temp files >= ' || setting END
     ELSE 'OK'
   END AS assessment
 FROM pg_settings
