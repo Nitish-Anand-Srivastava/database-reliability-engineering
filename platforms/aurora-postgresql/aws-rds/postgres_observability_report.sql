@@ -98,19 +98,185 @@ SELECT
 
 
 \qecho <section><h2>2. Configuration Compliance</h2>
-\qecho <h3>Critical Configuration Parameters</h3>
+\qecho <h3>Critical Configuration Parameters Assessment</h3>
 
-SELECT name, setting, unit, short_desc FROM pg_settings WHERE name IN ('shared_buffers', 'work_mem', 'maintenance_work_mem', 'effective_cache_size', 'max_connections', 'max_parallel_workers', 'random_page_cost', 'effective_io_concurrency') ORDER BY name;
+-- Comprehensive config compliance with assessment per parameter
+SELECT
+  s.name AS parameter,
+  s.setting || COALESCE(' ' || s.unit, '') AS current_value,
+  CASE s.name
+    WHEN 'shared_buffers'                THEN '25% of RAM (e.g. 8GB on 32GB instance)'
+    WHEN 'work_mem'                      THEN '4MB - 64MB depending on concurrency'
+    WHEN 'maintenance_work_mem'          THEN '256MB or more'
+    WHEN 'effective_cache_size'          THEN '75% of RAM'
+    WHEN 'max_connections'              THEN '<= 500 (use PgBouncer for more)'
+    WHEN 'wal_buffers'                   THEN '16MB or more (-1 = auto is acceptable)'
+    WHEN 'checkpoint_completion_target'  THEN '0.9'
+    WHEN 'random_page_cost'             THEN '1.1 (Aurora SSD)'
+    WHEN 'effective_io_concurrency'     THEN '200 (SSD)'
+    WHEN 'log_min_duration_statement'   THEN '<= 1000 ms (or 250 for detailed)'
+    WHEN 'log_lock_waits'               THEN 'on'
+    WHEN 'autovacuum'                   THEN 'on'
+    WHEN 'autovacuum_max_workers'       THEN '3 to 5'
+    WHEN 'track_io_timing'              THEN 'on'
+    WHEN 'log_autovacuum_min_duration'  THEN '<= 250 ms'
+    ELSE 'See documentation'
+  END AS recommended_value,
+  CASE s.name
+    WHEN 'log_min_duration_statement' THEN
+      CASE WHEN s.setting::int = -1 THEN 'CRITICAL'
+           WHEN s.setting::int > 5000 THEN 'WARNING'
+           WHEN s.setting::int > 1000 THEN 'WARNING'
+           ELSE 'OK' END
+    WHEN 'log_lock_waits' THEN
+      CASE WHEN s.setting = 'on' THEN 'OK' ELSE 'WARNING' END
+    WHEN 'autovacuum' THEN
+      CASE WHEN s.setting = 'on' THEN 'OK' ELSE 'CRITICAL' END
+    WHEN 'track_io_timing' THEN
+      CASE WHEN s.setting = 'on' THEN 'OK' ELSE 'WARNING' END
+    WHEN 'checkpoint_completion_target' THEN
+      CASE WHEN s.setting::numeric >= 0.9 THEN 'OK' ELSE 'WARNING' END
+    WHEN 'random_page_cost' THEN
+      CASE WHEN s.setting::numeric <= 1.5 THEN 'OK' ELSE 'WARNING' END
+    WHEN 'effective_io_concurrency' THEN
+      CASE WHEN s.setting::int >= 100 THEN 'OK' ELSE 'WARNING' END
+    WHEN 'max_connections' THEN
+      CASE WHEN s.setting::int > 500 THEN 'WARNING' ELSE 'OK' END
+    WHEN 'autovacuum_max_workers' THEN
+      CASE WHEN s.setting::int BETWEEN 3 AND 5 THEN 'OK'
+           WHEN s.setting::int < 3 THEN 'WARNING'
+           ELSE 'OK' END
+    WHEN 'log_autovacuum_min_duration' THEN
+      CASE WHEN s.setting::int = -1 THEN 'WARNING'
+           WHEN s.setting::int > 250 THEN 'WARNING'
+           ELSE 'OK' END
+    WHEN 'wal_buffers' THEN
+      CASE WHEN s.setting::int = -1 THEN 'OK'
+           WHEN s.setting::int * COALESCE(NULLIF(s.unit,''), '1')::int >= 16384 THEN 'OK'
+           ELSE 'WARNING' END
+    ELSE 'OK'
+  END AS assessment,
+  CASE s.name
+    WHEN 'log_min_duration_statement' THEN 'Captures slow queries; -1 means disabled (no slow log)'
+    WHEN 'log_lock_waits'             THEN 'Logs lock waits helping identify contention'
+    WHEN 'autovacuum'                 THEN 'Must be on; disabling causes bloat and XID wraparound'
+    WHEN 'track_io_timing'            THEN 'Enables IO timing in pg_stat_statements'
+    WHEN 'checkpoint_completion_target' THEN 'Spreads checkpoint IO; 0.9 reduces burst writes'
+    WHEN 'random_page_cost'           THEN 'Aurora uses SSD; 1.1 prevents seq scan preference'
+    WHEN 'effective_io_concurrency'   THEN 'Higher value allows more parallel IO for bitmap scans'
+    WHEN 'max_connections'            THEN 'High values waste memory; use connection pooler'
+    WHEN 'autovacuum_max_workers'     THEN 'More workers handle high-churn databases'
+    WHEN 'log_autovacuum_min_duration' THEN 'Log slow autovacuums for tuning'
+    WHEN 'wal_buffers'                THEN 'More WAL buffer reduces WAL write latency'
+    ELSE ''
+  END AS rationale
+FROM pg_settings s
+WHERE s.name IN (
+  'shared_buffers','work_mem','maintenance_work_mem','effective_cache_size',
+  'max_connections','wal_buffers','checkpoint_completion_target','random_page_cost',
+  'effective_io_concurrency','log_min_duration_statement','log_lock_waits',
+  'autovacuum','autovacuum_max_workers','track_io_timing','log_autovacuum_min_duration'
+)
+ORDER BY
+  CASE
+    WHEN s.name IN ('autovacuum','log_min_duration_statement') THEN 1
+    ELSE 2
+  END,
+  s.name;
 
 \qecho <h3>Logging Configuration</h3>
 
-SELECT name, setting FROM pg_settings WHERE name LIKE 'log_%' AND setting != 'off' ORDER BY name;
+SELECT
+  name AS parameter,
+  setting AS current_value,
+  CASE name
+    WHEN 'log_min_duration_statement' THEN
+      CASE WHEN setting::int = -1 THEN 'CRITICAL - slow query logging disabled'
+           WHEN setting::int > 5000 THEN 'WARNING - threshold too high (> 5s)'
+           ELSE 'OK' END
+    WHEN 'log_checkpoints'  THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'INFO - enable for checkpoint visibility' END
+    WHEN 'log_connections'  THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'INFO' END
+    WHEN 'log_lock_waits'   THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'WARNING - lock waits will be silent' END
+    WHEN 'log_temp_files'   THEN CASE WHEN setting::int >= 0 AND setting::int <= 1024 THEN 'OK' ELSE 'WARNING - temp file logging may be too noisy or disabled' END
+    ELSE 'OK'
+  END AS assessment
+FROM pg_settings
+WHERE name IN ('log_min_duration_statement','log_checkpoints','log_connections','log_lock_waits','log_temp_files','log_statement','log_duration','log_autovacuum_min_duration')
+ORDER BY name;
+
+\qecho <h3>Aurora-Specific Settings</h3>
+
+SELECT
+  name AS parameter,
+  setting AS current_value,
+  CASE
+    WHEN name = 'aurora_parallel_query' AND setting = 'on'  THEN 'ENABLED - parallel query active'
+    WHEN name = 'aurora_parallel_query' AND setting != 'on' THEN 'INFO - aurora_parallel_query is off'
+    ELSE setting
+  END AS notes
+FROM pg_settings
+WHERE name IN ('aurora_parallel_query','aurora_disable_hash_join','rds.log_retention_period')
+ORDER BY name;
 
 \qecho <h3>Installed Extensions</h3>
 
-SELECT extname, extversion, extnamespace::regnamespace FROM pg_extension ORDER BY extname;
+SELECT extname, extversion, extnamespace::regnamespace AS schema FROM pg_extension ORDER BY extname;
 
-INSERT INTO report_findings SELECT '2. Configuration', 'info', 'Configuration review completed', 'Review critical parameters for optimization', count(*)::text FROM pg_extension;
+-- Insert CRITICAL config findings
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'critical',
+  'autovacuum is OFF',
+  'Set autovacuum = on immediately to prevent XID wraparound and table bloat',
+  current_setting('autovacuum')
+WHERE current_setting('autovacuum') = 'off';
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'critical',
+  'Slow query logging is completely disabled (log_min_duration_statement = -1)',
+  'Set log_min_duration_statement = 1000 (or 250 for detailed capture) to enable slow query detection',
+  current_setting('log_min_duration_statement')
+WHERE current_setting('log_min_duration_statement')::int = -1;
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'warning',
+  'Slow query threshold is very high: ' || current_setting('log_min_duration_statement') || ' ms',
+  'Consider lowering log_min_duration_statement to 1000 or less',
+  current_setting('log_min_duration_statement')
+WHERE current_setting('log_min_duration_statement')::int > 1000
+  AND current_setting('log_min_duration_statement')::int != -1;
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'warning',
+  'track_io_timing is OFF - IO metrics missing from pg_stat_statements',
+  'Set track_io_timing = on for IO visibility in query monitoring',
+  current_setting('track_io_timing')
+WHERE current_setting('track_io_timing') = 'off';
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'warning',
+  'log_lock_waits is OFF - lock contention will be invisible in logs',
+  'Set log_lock_waits = on to capture lock wait events',
+  current_setting('log_lock_waits')
+WHERE current_setting('log_lock_waits') = 'off';
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '2. Configuration',
+  'warning',
+  'random_page_cost is too high for Aurora SSD storage: ' || current_setting('random_page_cost'),
+  'Set random_page_cost = 1.1 for Aurora SSD to encourage index usage',
+  current_setting('random_page_cost')
+WHERE current_setting('random_page_cost')::numeric > 2.0;
 
 \qecho </section>
 
@@ -378,69 +544,145 @@ INSERT INTO report_findings SELECT '9. Database Pressure', 'info', 'Pressure met
 \qecho <section><h2>10. Index Analysis (Comprehensive)</h2>
 \qecho <h3>Top 20 Indexes by Scan Count</h3>
 
-SELECT 
+SELECT
   schemaname,
-  relname as tablename,
-  indexrelname as indexname,
+  relname        AS table_name,
+  indexrelname   AS index_name,
   idx_scan,
   idx_tup_read,
   idx_tup_fetch,
-  pg_size_pretty(pg_relation_size(indexrelid)) as index_size
+  pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
 FROM pg_stat_user_indexes
-ORDER BY idx_scan DESC LIMIT 20;
+ORDER BY idx_scan DESC
+LIMIT 20;
 
-\qecho <h3>Unused Indexes (No Scans)</h3>
+\qecho <h3>Unused Indexes (No Scans Since Last Stats Reset) — Candidates for Removal</h3>
 
-SELECT 
+SELECT
   schemaname,
-  relname as tablename,
-  indexrelname as indexname,
+  relname       AS table_name,
+  indexrelname  AS index_name,
   idx_scan,
-  pg_size_pretty(pg_relation_size(indexrelid)) as index_size,
-  CASE 
+  pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+  CASE
     WHEN pg_relation_size(indexrelid) > 104857600 THEN 'CRITICAL - Large unused index'
-    WHEN pg_relation_size(indexrelid) > 52428800 THEN 'WARNING - Medium unused index'
-    ELSE 'INFO' 
-  END as severity
+    WHEN pg_relation_size(indexrelid) > 52428800  THEN 'WARNING - Medium unused index'
+    ELSE 'INFO'
+  END AS severity,
+  'DROP INDEX CONCURRENTLY ' || schemaname || '.' || indexrelname || ';' AS suggested_action
 FROM pg_stat_user_indexes
-WHERE idx_scan = 0 AND indexrelname NOT LIKE 'pg_toast%'
-ORDER BY pg_relation_size(indexrelid) DESC LIMIT 30;
+WHERE idx_scan = 0
+  AND indexrelname NOT LIKE 'pg_toast%'
+ORDER BY pg_relation_size(indexrelid) DESC
+LIMIT 30;
 
-\qecho <h3>Index Bloat Analysis</h3>
+\qecho <h3>Redundant / Prefix-Duplicate Indexes</h3>
 
-SELECT 
-  schemaname,
-  relname as tablename,
-  indexrelname as indexname,
-  round(100.0 * (pg_relation_size(indexrelid) - pg_relation_size(indexrelid, 'main'))::numeric / NULLIF(pg_relation_size(indexrelid), 0), 2) as bloat_ratio_pct,
-  pg_size_pretty(pg_relation_size(indexrelid) - pg_relation_size(indexrelid, 'main')) as bloat_size,
-  pg_size_pretty(pg_relation_size(indexrelid)) as total_size
-FROM pg_stat_user_indexes
-ORDER BY pg_relation_size(indexrelid) - pg_relation_size(indexrelid, 'main') DESC LIMIT 20;
-
-\qecho <h3>Duplicate Indexes</h3>
-
-WITH index_groups AS (
-  SELECT 
-    schemaname,
-    relname as tablename,
-    array_agg(indexrelname) as indexes,
-    array_agg(pg_relation_size(indexrelid)::text) as sizes,
-    count(*) as index_count
-  FROM pg_stat_user_indexes
-  GROUP BY schemaname, relname
-  HAVING count(*) > 1
+WITH index_cols AS (
+  SELECT
+    i.indexrelid,
+    i.indrelid,
+    array_agg(a.attname ORDER BY u.ordinality) AS cols,
+    count(*)                                    AS ncols,
+    ix.relname                                  AS idx_name,
+    t.relname                                   AS tbl_name,
+    n.nspname                                   AS schema_name
+  FROM pg_index i
+  JOIN pg_class ix ON ix.oid = i.indexrelid
+  JOIN pg_class t  ON t.oid  = i.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS u(attnum, ordinality) ON true
+  JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = u.attnum AND u.attnum > 0
+  WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+    AND NOT i.indisprimary
+  GROUP BY i.indexrelid, i.indrelid, ix.relname, t.relname, n.nspname
 )
-SELECT 
-  schemaname,
-  tablename,
-  index_count,
-  array_to_string(indexes, ', ') as indexes,
-  array_to_string(sizes, ', ') as total_sizes
-FROM index_groups
-ORDER BY index_count DESC;
+SELECT
+  a.schema_name,
+  a.tbl_name                                               AS table_name,
+  a.idx_name                                               AS redundant_index,
+  b.idx_name                                               AS covering_index,
+  array_to_string(a.cols, ', ')                            AS redundant_cols,
+  array_to_string(b.cols, ', ')                            AS covering_cols,
+  pg_size_pretty(pg_relation_size(a.indexrelid))           AS wasted_size,
+  'DROP INDEX CONCURRENTLY ' || a.schema_name || '.' || a.idx_name || ';' AS suggested_action
+FROM index_cols a
+JOIN index_cols b
+  ON  a.indrelid   = b.indrelid
+  AND a.indexrelid <> b.indexrelid
+  AND a.cols = b.cols[1:a.ncols]   -- a's columns are a prefix of b's columns
+ORDER BY a.schema_name, a.tbl_name;
 
-INSERT INTO report_findings SELECT '10. Index Analysis', 'warning', 'Unused and bloated indexes detected', 'Review and remove unused indexes, rebuild bloated indexes', (SELECT count(*)::text FROM pg_stat_user_indexes WHERE idx_scan = 0);
+\qecho <h3>Sequential Scan Heavy Tables (Possible Missing Index)</h3>
+
+SELECT
+  schemaname,
+  relname          AS table_name,
+  seq_scan,
+  idx_scan,
+  seq_tup_read,
+  n_live_tup,
+  CASE
+    WHEN idx_scan = 0 THEN 'No index scans at all'
+    ELSE round(seq_scan::numeric / NULLIF(idx_scan, 0), 2)::text || 'x more seq than idx'
+  END               AS seq_to_idx_ratio,
+  pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size
+FROM pg_stat_user_tables
+WHERE seq_scan > 1000
+  AND seq_scan > COALESCE(idx_scan, 0)
+ORDER BY seq_scan DESC
+LIMIT 20;
+
+\qecho <h3>Index vs Sequential Scan Ratio Summary per Table</h3>
+
+SELECT
+  schemaname,
+  relname          AS table_name,
+  seq_scan,
+  idx_scan,
+  CASE
+    WHEN (seq_scan + COALESCE(idx_scan, 0)) = 0 THEN 'No activity'
+    ELSE round(100.0 * COALESCE(idx_scan, 0)::numeric / (seq_scan + COALESCE(idx_scan, 0)), 1)::text || '%'
+  END               AS index_usage_pct,
+  CASE
+    WHEN (seq_scan + COALESCE(idx_scan, 0)) = 0 THEN 'OK'
+    WHEN round(100.0 * COALESCE(idx_scan, 0)::numeric / (seq_scan + COALESCE(idx_scan, 0)), 1) < 50
+         AND seq_scan > 500 THEN 'WARNING'
+    ELSE 'OK'
+  END               AS assessment
+FROM pg_stat_user_tables
+WHERE (seq_scan + COALESCE(idx_scan, 0)) > 100
+ORDER BY index_usage_pct ASC
+LIMIT 30;
+
+-- Findings: unused large indexes
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '10. Index Analysis',
+  CASE WHEN pg_relation_size(indexrelid) > 104857600 THEN 'critical' ELSE 'warning' END,
+  'Unused index consuming space: ' || schemaname || '.' || indexrelname || ' on table ' || relname,
+  'DROP INDEX CONCURRENTLY ' || schemaname || '.' || indexrelname || ';',
+  pg_size_pretty(pg_relation_size(indexrelid))
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+  AND indexrelname NOT LIKE 'pg_toast%'
+  AND pg_relation_size(indexrelid) > 10485760;
+
+-- Findings: seq-scan heavy tables
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '10. Index Analysis',
+  'warning',
+  'High sequential scan rate on table: ' || schemaname || '.' || relname
+    || ' (' || seq_scan || ' seq scans vs ' || COALESCE(idx_scan, 0) || ' idx scans)',
+  'Investigate whether an index on frequently filtered columns would help',
+  seq_scan::text || ' seq scans'
+FROM pg_stat_user_tables
+WHERE seq_scan > 1000
+  AND seq_scan > COALESCE(idx_scan, 0) * 2
+  AND pg_total_relation_size(schemaname || '.' || relname) > 10485760
+ORDER BY seq_scan DESC
+LIMIT 10;
 
 \qecho </section>
 
@@ -495,139 +737,346 @@ INSERT INTO report_findings SELECT '11. Statistics', 'warning', 'Stale statistic
 \qecho </section>
 
 \qecho <section><h2>12. Temp/Spill Analysis</h2>
-\qecho <h3>Work Memory Usage by Queries</h3>
+\qecho <h3>Current work_mem Settings</h3>
 
-SELECT 
-  'work_mem setting' as metric,
-  current_setting('work_mem') as value
-UNION ALL SELECT 
-  'maintenance_work_mem setting', current_setting('maintenance_work_mem')
-UNION ALL SELECT 
-  'effective_cache_size setting', current_setting('effective_cache_size');
+SELECT
+  'work_mem'              AS parameter,
+  current_setting('work_mem') AS current_value
+UNION ALL SELECT
+  'maintenance_work_mem', current_setting('maintenance_work_mem')
+UNION ALL SELECT
+  'effective_cache_size',  current_setting('effective_cache_size');
 
-\qecho <h3>Database Temporary Space</h3>
+\qecho <h3>Temporary File Usage (pg_stat_database)</h3>
 
-SELECT 
-  'Temp Files Count' as metric,
-  temp_files::text as value
-FROM pg_stat_database WHERE datname = current_database()
-UNION ALL SELECT 
-  'Temp Bytes Used', pg_size_pretty(temp_bytes)
-FROM pg_stat_database WHERE datname = current_database();
+SELECT
+  datname                                                         AS database,
+  temp_files,
+  pg_size_pretty(temp_bytes)                                      AS temp_bytes_total,
+  CASE WHEN temp_files > 0
+       THEN pg_size_pretty(temp_bytes / temp_files)
+       ELSE 'N/A'
+  END                                                             AS avg_temp_bytes_per_file,
+  CASE
+    WHEN temp_files > 10000 THEN 'CRITICAL'
+    WHEN temp_files > 1000  THEN 'WARNING'
+    WHEN temp_files > 0     THEN 'INFO'
+    ELSE 'OK'
+  END                                                             AS severity,
+  CASE
+    WHEN temp_files > 0
+    THEN 'work_mem may be insufficient; current setting: ' || current_setting('work_mem')
+    ELSE 'No temp file spills detected since last stats reset'
+  END                                                             AS recommendation
+FROM pg_stat_database
+WHERE datname = current_database();
 
-\qecho <h3>Spill Risk Assessment</h3>
+\qecho <h3>Top Queries by Temp Block Writes</h3>
 
-SELECT 
-  current_database() as database,
-  current_setting('work_mem') as work_mem_setting,
-  current_setting('maintenance_work_mem') as maintenance_work_mem_setting,
-  CASE 
-    WHEN current_setting('work_mem') IN ('4MB', '4096kB') OR current_setting('work_mem')::text LIKE '<%' THEN 'LOW - Increase work_mem'
-    WHEN current_setting('work_mem') LIKE '1%' OR current_setting('work_mem') LIKE '2%' THEN 'MEDIUM - Consider increasing'
-    ELSE 'HEALTHY' 
-  END as risk_level;
+\if :has_pgss
+\if :has_pgss_temp_columns
+SELECT
+  left(query, 120)                                   AS query_snippet,
+  calls,
+  temp_blks_written,
+  round(temp_blks_written::numeric / NULLIF(calls, 0), 1) AS avg_temp_blks_per_call,
+  round(total_exec_time::numeric / NULLIF(calls, 0), 2)   AS avg_exec_ms
+FROM pg_stat_statements
+WHERE temp_blks_written > 0
+ORDER BY temp_blks_written DESC
+LIMIT 20;
+\endif
+\endif
 
-INSERT INTO report_findings SELECT '12. Temp/Spill', 'info', 'Temporary memory allocation analyzed', 'Tune work_mem and maintenance_work_mem if spills detected', 'Complete';
+-- Insert findings based on actual temp file data
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '12. Temp/Spill',
+  CASE
+    WHEN temp_files > 10000 THEN 'critical'
+    ELSE 'warning'
+  END,
+  'High temp file spill detected: ' || temp_files || ' temp files totalling ' || pg_size_pretty(temp_bytes),
+  'Increase work_mem (currently ' || current_setting('work_mem') || ') to reduce sort/hash spills; test with SET work_mem = ''64MB'' in a session first',
+  temp_files::text || ' temp files'
+FROM pg_stat_database
+WHERE datname = current_database()
+  AND temp_files > 1000;
 
 \qecho </section>
 
-\qecho <section><h2>13. Table & Index Bloat Estimation</h2>
-\qecho <h3>Top 20 Most Bloated Tables</h3>
+\qecho <section><h2>13. Table &amp; Index Bloat Estimation</h2>
+\qecho <h3>Top 30 Bloated Tables (10 MB+, excluding temp schemas)</h3>
 
-SELECT 
+SELECT
   schemaname,
-  relname as tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as total_size,
+  relname                                                              AS table_name,
+  pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size,
   n_live_tup,
   n_dead_tup,
-  round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_tup_pct,
-  CASE 
+  round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_tup_pct,
+  CASE
     WHEN round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20 THEN 'CRITICAL'
     WHEN round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 10 THEN 'WARNING'
-    ELSE 'OK' 
-  END as bloat_severity
+    ELSE 'OK'
+  END                                                                  AS severity,
+  CASE
+    WHEN round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20
+    THEN 'VACUUM FULL ' || schemaname || '.' || relname || ';'
+    WHEN round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 10
+    THEN 'VACUUM ' || schemaname || '.' || relname || ';'
+    ELSE 'No immediate action needed'
+  END                                                                  AS recommended_action
 FROM pg_stat_user_tables
-WHERE n_live_tup > 0
-ORDER BY n_dead_tup DESC LIMIT 20;
+WHERE schemaname NOT LIKE 'pg_temp%'
+  AND pg_total_relation_size(schemaname || '.' || relname) > 10485760
+  AND (n_live_tup + n_dead_tup) > 0
+ORDER BY dead_tup_pct DESC NULLS LAST
+LIMIT 30;
 
-\qecho <h3>Table Fillfactor Analysis</h3>
+\qecho <h3>HOT Update Effectiveness &amp; Fillfactor</h3>
 
-SELECT 
-  schemaname,
-  relname as tablename,
-  n_live_tup,
-  n_dead_tup,
-  round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_tup_pct,
-  pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as table_size
+SELECT
+  st.schemaname,
+  st.relname                                                              AS table_name,
+  st.n_tup_upd,
+  st.n_tup_hot_upd,
+  round(100.0 * st.n_tup_hot_upd::numeric / NULLIF(st.n_tup_upd, 0), 1) AS hot_update_pct,
+  COALESCE(
+    (SELECT regexp_replace(opt, 'fillfactor=', '')
+     FROM unnest(c.reloptions) AS opt
+     WHERE opt LIKE 'fillfactor=%'
+     LIMIT 1),
+    '100'
+  )                                                                       AS fillfactor,
+  CASE
+    WHEN round(100.0 * st.n_tup_hot_upd::numeric / NULLIF(st.n_tup_upd, 0), 1) < 20
+     AND COALESCE(
+           (SELECT regexp_replace(opt, 'fillfactor=', '')
+            FROM unnest(c.reloptions) AS opt
+            WHERE opt LIKE 'fillfactor=%'
+            LIMIT 1),
+           '100') = '100'
+     AND st.n_tup_upd > 1000
+    THEN 'WARNING - Low HOT; consider ALTER TABLE ... SET (fillfactor=80)'
+    ELSE 'OK'
+  END                                                                     AS assessment
+FROM pg_stat_user_tables st
+JOIN pg_class c ON c.relname = st.relname
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE st.schemaname NOT LIKE 'pg_temp%'
+  AND st.n_tup_upd > 100
+  AND pg_total_relation_size(st.schemaname || '.' || st.relname) > 10485760
+ORDER BY hot_update_pct ASC NULLS LAST
+LIMIT 25;
+
+-- Findings: critically bloated tables
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '13. Table Bloat',
+  'critical',
+  'Table ' || schemaname || '.' || relname || ' has ' || round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 1) || '% dead tuples',
+  'VACUUM FULL ' || schemaname || '.' || relname || '; (schedule during low-traffic window)',
+  n_dead_tup::text || ' dead tuples'
 FROM pg_stat_user_tables
-WHERE n_live_tup > 0 AND n_dead_tup > 1000
-ORDER BY n_dead_tup DESC
-LIMIT 20;
+WHERE schemaname NOT LIKE 'pg_temp%'
+  AND pg_total_relation_size(schemaname || '.' || relname) > 10485760
+  AND round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20;
 
-\qecho <h3>Disk Space Wasted Estimation</h3>
-
-SELECT 
-  'Total User Relations Size' as metric,
-  pg_size_pretty(sum(pg_total_relation_size(schemaname||'.'||relname)))::text as value
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '13. Table Bloat',
+  'warning',
+  'Table ' || schemaname || '.' || relname || ' has ' || round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 1) || '% dead tuples',
+  'VACUUM ' || schemaname || '.' || relname || '; (autovacuum thresholds may need tuning)',
+  n_dead_tup::text || ' dead tuples'
 FROM pg_stat_user_tables
-UNION ALL SELECT 
-  'Tables with Dead Tuples', (SELECT count(*)::text FROM pg_stat_user_tables WHERE n_dead_tup > 100);
-
-INSERT INTO report_findings SELECT '13. Table Bloat', 'warning', 'Table bloat detected', 'Run VACUUM FULL on heavily bloated tables during maintenance window', (SELECT count(*)::text FROM pg_stat_user_tables WHERE n_dead_tup > 1000000);
+WHERE schemaname NOT LIKE 'pg_temp%'
+  AND pg_total_relation_size(schemaname || '.' || relname) > 10485760
+  AND round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 10
+  AND round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) <= 20;
 
 \qecho </section>
 
-\qecho <section><h2>14. Vacuum Health & Autovacuum Effectiveness</h2>
+\qecho <section><h2>14. Vacuum Health &amp; Autovacuum Effectiveness</h2>
 \qecho <h3>Autovacuum Configuration</h3>
 
-SELECT 
-  'autovacuum' as setting,
-  current_setting('autovacuum') as value
-UNION ALL SELECT 
-  'autovacuum_max_workers', current_setting('autovacuum_max_workers')
-UNION ALL SELECT 
-  'autovacuum_naptime', current_setting('autovacuum_naptime')
-UNION ALL SELECT 
-  'autovacuum_vacuum_threshold', current_setting('autovacuum_vacuum_threshold')
-UNION ALL SELECT 
-  'autovacuum_analyze_threshold', current_setting('autovacuum_analyze_threshold')
-UNION ALL SELECT 
-  'autovacuum_freeze_max_age', current_setting('autovacuum_freeze_max_age');
+SELECT
+  name   AS parameter,
+  setting AS current_value
+FROM pg_settings
+WHERE name IN (
+  'autovacuum', 'autovacuum_max_workers', 'autovacuum_naptime',
+  'autovacuum_vacuum_threshold', 'autovacuum_vacuum_scale_factor',
+  'autovacuum_analyze_threshold', 'autovacuum_analyze_scale_factor',
+  'autovacuum_vacuum_cost_delay', 'autovacuum_vacuum_cost_limit',
+  'autovacuum_freeze_max_age', 'log_autovacuum_min_duration'
+)
+ORDER BY name;
+
+\qecho <h3>Tables Overdue for Autovacuum</h3>
+
+SELECT
+  schemaname,
+  relname                       AS table_name,
+  n_live_tup,
+  n_dead_tup,
+  round(
+    current_setting('autovacuum_vacuum_threshold')::numeric
+    + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+  , 0)                          AS vacuum_threshold,
+  CASE
+    WHEN n_dead_tup > (
+      current_setting('autovacuum_vacuum_threshold')::numeric
+      + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+    ) THEN 'OVERDUE'
+    ELSE 'OK'
+  END                           AS vacuum_status,
+  last_autovacuum,
+  last_vacuum,
+  pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS table_size
+FROM pg_stat_user_tables
+WHERE schemaname NOT LIKE 'pg_temp%'
+ORDER BY
+  (n_dead_tup - (
+    current_setting('autovacuum_vacuum_threshold')::numeric
+    + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+  )) DESC NULLS LAST
+LIMIT 30;
+
+\qecho <h3>Tables Overdue for Autoanalyze</h3>
+
+SELECT
+  schemaname,
+  relname                       AS table_name,
+  n_live_tup,
+  n_mod_since_analyze,
+  round(
+    current_setting('autovacuum_analyze_threshold')::numeric
+    + current_setting('autovacuum_analyze_scale_factor')::numeric * n_live_tup
+  , 0)                          AS analyze_threshold,
+  CASE
+    WHEN n_mod_since_analyze > (
+      current_setting('autovacuum_analyze_threshold')::numeric
+      + current_setting('autovacuum_analyze_scale_factor')::numeric * n_live_tup
+    ) THEN 'OVERDUE'
+    ELSE 'OK'
+  END                           AS analyze_status,
+  last_autoanalyze,
+  last_analyze
+FROM pg_stat_user_tables
+WHERE schemaname NOT LIKE 'pg_temp%'
+ORDER BY
+  (n_mod_since_analyze - (
+    current_setting('autovacuum_analyze_threshold')::numeric
+    + current_setting('autovacuum_analyze_scale_factor')::numeric * n_live_tup
+  )) DESC NULLS LAST
+LIMIT 30;
 
 \qecho <h3>Freeze Age Risk by Table</h3>
 
-SELECT 
-  n.nspname as schemaname,
-  c.relname as tablename,
-  age(c.relfrozenxid)::int as age_transactions,
-  current_setting('autovacuum_freeze_max_age')::int as freeze_threshold,
-  CASE 
-    WHEN age(c.relfrozenxid)::int > current_setting('autovacuum_freeze_max_age')::int * 0.9 THEN 'CRITICAL'
-    WHEN age(c.relfrozenxid)::int > current_setting('autovacuum_freeze_max_age')::int * 0.7 THEN 'HIGH'
-    WHEN age(c.relfrozenxid)::int > current_setting('autovacuum_freeze_max_age')::int * 0.5 THEN 'MEDIUM'
-    ELSE 'LOW' 
-  END as freeze_risk
+SELECT
+  n.nspname                                              AS schemaname,
+  c.relname                                              AS table_name,
+  age(c.relfrozenxid)                                    AS age_transactions,
+  current_setting('autovacuum_freeze_max_age')::int      AS freeze_threshold,
+  round(100.0 * age(c.relfrozenxid)::numeric
+        / current_setting('autovacuum_freeze_max_age')::numeric, 1) AS pct_of_limit,
+  CASE
+    WHEN age(c.relfrozenxid) > current_setting('autovacuum_freeze_max_age')::int * 0.9 THEN 'CRITICAL'
+    WHEN age(c.relfrozenxid) > current_setting('autovacuum_freeze_max_age')::int * 0.7 THEN 'HIGH'
+    WHEN age(c.relfrozenxid) > current_setting('autovacuum_freeze_max_age')::int * 0.5 THEN 'MEDIUM'
+    ELSE 'LOW'
+  END                                                    AS freeze_risk
 FROM pg_class c
 JOIN pg_namespace n ON c.relnamespace = n.oid
 WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
   AND c.relkind = 'r'
-ORDER BY age(c.relfrozenxid)::int DESC LIMIT 30;
+ORDER BY age(c.relfrozenxid) DESC
+LIMIT 30;
 
-\qecho <h3>Vacuum and Analyze Frequency</h3>
+\qecho <h3>Long Transactions Blocking Vacuum</h3>
 
-SELECT 
+SELECT
+  pid,
+  usename,
+  application_name,
+  state,
+  age(now(), xact_start)                  AS xact_age,
+  left(query, 80)                          AS query_snippet,
+  CASE
+    WHEN age(now(), xact_start) > interval '1 hour' THEN 'CRITICAL - blocking vacuum'
+    WHEN age(now(), xact_start) > interval '15 minutes' THEN 'WARNING'
+    ELSE 'OK'
+  END                                      AS assessment
+FROM pg_stat_activity
+WHERE xact_start IS NOT NULL
+  AND state != 'idle'
+  AND pid <> pg_backend_pid()
+ORDER BY xact_start ASC
+LIMIT 20;
+
+\qecho <h3>Currently Running Autovacuum Workers</h3>
+
+SELECT
+  pid,
+  usename,
+  datname,
+  state,
+  age(now(), query_start)   AS running_for,
+  left(query, 100)           AS autovacuum_target
+FROM pg_stat_activity
+WHERE query LIKE 'autovacuum:%'
+ORDER BY query_start ASC;
+
+\qecho <h3>Last 10 Tables Vacuumed (most recently autovacuumed)</h3>
+
+SELECT
   schemaname,
-  relname as tablename,
-  vacuum_count + autovacuum_count as total_vacuums,
-  analyze_count + autoanalyze_count as total_analyzes,
-  last_vacuum,
+  relname         AS table_name,
   last_autovacuum,
-  last_analyze,
-  last_autoanalyze
+  last_vacuum,
+  autovacuum_count,
+  vacuum_count,
+  n_dead_tup
 FROM pg_stat_user_tables
-ORDER BY vacuum_count + autovacuum_count DESC LIMIT 30;
+WHERE last_autovacuum IS NOT NULL OR last_vacuum IS NOT NULL
+ORDER BY GREATEST(last_autovacuum, last_vacuum) DESC NULLS LAST
+LIMIT 10;
 
-INSERT INTO report_findings SELECT '14. Vacuum Health', 'warning', 'Vacuum monitoring completed', 'Monitor freeze XID age, ensure autovacuum is running effectively', (SELECT count(*)::text FROM pg_class c WHERE c.relkind = 'r' AND age(c.relfrozenxid)::int > 100000000);
+-- Findings: tables overdue for vacuum
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '14. Vacuum Health',
+  'warning',
+  'Table ' || schemaname || '.' || relname || ' is overdue for autovacuum (' || n_dead_tup || ' dead tuples vs threshold '
+    || round(current_setting('autovacuum_vacuum_threshold')::numeric + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup, 0) || ')',
+  'Run: VACUUM ANALYZE ' || schemaname || '.' || relname || '; or lower autovacuum_vacuum_scale_factor for this table',
+  n_dead_tup::text || ' dead tuples'
+FROM pg_stat_user_tables
+WHERE schemaname NOT LIKE 'pg_temp%'
+  AND n_dead_tup > (
+    current_setting('autovacuum_vacuum_threshold')::numeric
+    + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+  )
+ORDER BY n_dead_tup DESC
+LIMIT 10;
+
+-- Findings: tables with long-running transactions blocking vacuum
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '14. Vacuum Health',
+  'critical',
+  'Long-running transaction (PID ' || pid || ', ' || usename || ') open for ' || age(now(), xact_start)::text || ' is blocking vacuum',
+  'Investigate and terminate if safe: SELECT pg_terminate_backend(' || pid || ');',
+  age(now(), xact_start)::text
+FROM pg_stat_activity
+WHERE xact_start IS NOT NULL
+  AND state != 'idle'
+  AND pid <> pg_backend_pid()
+  AND age(now(), xact_start) > interval '1 hour'
+ORDER BY xact_start ASC
+LIMIT 5;
 
 \qecho </section>
 
@@ -714,49 +1163,104 @@ INSERT INTO report_findings SELECT '16. IO Analysis', 'info', 'Storage and IO me
 \qecho </section>
 
 \qecho <section><h2>17. Aurora Replica Health (if applicable)</h2>
-\qecho <h3>Replication Slot Status</h3>
 
-SELECT 
+\qecho <h3>Writer or Reader Node Detection</h3>
+
+SELECT
+  pg_is_in_recovery()                      AS is_reader,
+  CASE pg_is_in_recovery()
+    WHEN true  THEN 'READER (standby/replica)'
+    WHEN false THEN 'WRITER (primary)'
+  END                                       AS node_role,
+  current_setting('synchronous_commit')     AS synchronous_commit;
+
+\qecho <h3>Connected Standbys (pg_stat_replication)</h3>
+
+SELECT
+  pid,
+  usename,
+  application_name,
+  client_addr,
+  state,
+  sync_state,
+  sent_lsn,
+  write_lsn,
+  flush_lsn,
+  replay_lsn,
+  pg_wal_lsn_diff(sent_lsn, replay_lsn)                       AS bytes_lag,
+  pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn))       AS bytes_lag_pretty,
+  write_lag,
+  flush_lag,
+  replay_lag,
+  CASE
+    WHEN extract(epoch FROM replay_lag) > 30 THEN 'CRITICAL - lag > 30s'
+    WHEN extract(epoch FROM replay_lag) > 10 THEN 'WARNING - lag > 10s'
+    WHEN replay_lag IS NULL THEN 'UNKNOWN'
+    ELSE 'OK'
+  END                                                           AS lag_assessment
+FROM pg_stat_replication
+ORDER BY bytes_lag DESC;
+
+\qecho <h3>Replication Slots with Retained WAL</h3>
+
+SELECT
   slot_name,
   slot_type,
   database,
   active,
-  CASE 
-    WHEN active THEN 'ACTIVE'
-    ELSE 'INACTIVE' 
-  END as slot_status,
-  restart_lsn
+  restart_lsn,
+  confirmed_flush_lsn,
+  pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)          AS retained_wal_bytes,
+  pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained_wal_size,
+  CASE
+    WHEN NOT active AND pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) > 10737418240
+    THEN 'CRITICAL - inactive slot retaining > 10 GB WAL'
+    WHEN NOT active THEN 'WARNING - inactive slot'
+    ELSE 'OK'
+  END                                                           AS assessment
 FROM pg_replication_slots
-ORDER BY active DESC, slot_name;
+ORDER BY retained_wal_bytes DESC NULLS LAST;
 
-\qecho <h3>Replication Lag (Logical Replication)</h3>
+\qecho <h3>Aurora-Specific Settings</h3>
 
-SELECT 
-  'Logical Replication Slots' as metric,
-  count(*)::text as value
+SELECT
+  name    AS parameter,
+  setting AS current_value
+FROM pg_settings
+WHERE name IN (
+  'aurora_parallel_query',
+  'aurora.replica_read_consistency',
+  'random_page_cost',
+  'synchronous_commit',
+  'wal_level',
+  'max_wal_senders',
+  'max_replication_slots'
+)
+ORDER BY name;
+
+-- Findings: replica lag
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '17. Aurora Replica Health',
+  'critical',
+  'Replica ' || application_name || ' has replay lag of ' || replay_lag::text,
+  'Investigate replica load, network throughput, or long-running queries on the replica blocking apply',
+  replay_lag::text
+FROM pg_stat_replication
+WHERE extract(epoch FROM replay_lag) > 30;
+
+-- Findings: inactive slots retaining WAL
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '17. Aurora Replica Health',
+  'critical',
+  'Replication slot ' || slot_name || ' is inactive and retaining '
+    || pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) || ' of WAL',
+  'DROP REPLICATION SLOT ' || quote_ident(slot_name) || '; if slot is no longer needed, to free WAL space',
+  pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn))
 FROM pg_replication_slots
-WHERE slot_type = 'logical'
-UNION ALL SELECT 
-  'Physical Replication Slots',
-  count(*)::text
-FROM pg_replication_slots
-WHERE slot_type = 'physical'
-UNION ALL SELECT 
-  'Active Slots',
-  count(*)::text
-FROM pg_replication_slots
-WHERE active = true;
-
-\qecho <h3>Aurora-Specific Storage Information</h3>
-
-SELECT 
-  datname as database_name,
-  (SELECT setting FROM pg_settings WHERE name = 'aurora_parallel_query') as aurora_parallel_query,
-  (SELECT setting FROM pg_settings WHERE name = 'random_page_cost') as random_page_cost
-FROM pg_database 
-WHERE datname = current_database();
-
-INSERT INTO report_findings SELECT '17. Aurora Replica Health', 'info', 'Replication slot status reviewed', 'Monitor replication lag and slot retention', 'Complete';
+WHERE NOT active
+  AND pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) > 1073741824;
 
 \qecho </section>
 
@@ -839,111 +1343,301 @@ INSERT INTO report_findings SELECT '19. Capacity Planning', 'info', 'Growth tren
 
 \qecho </section>
 
-\qecho <section><h2>20. Observability Readiness & Extensions</h2>
-\qecho <h3>Installed Extensions Capability Check</h3>
+\qecho <section><h2>20. Observability Readiness &amp; Extensions</h2>
+\qecho <h3>Extension Matrix: Status, Purpose &amp; Recommendations</h3>
 
-SELECT 
-  extname as extension,
-  extversion as version,
-  CASE 
-    WHEN extname = 'pg_stat_statements' THEN 'CRITICAL - SQL Monitoring'
-    WHEN extname = 'pg_wait_sampling' THEN 'CRITICAL - Wait Event Analysis'
-    WHEN extname = 'auto_explain' THEN 'IMPORTANT - Query Analysis'
-    WHEN extname = 'pageinspect' THEN 'USEFUL - Bloat Analysis'
-    WHEN extname = 'pgstattuple' THEN 'USEFUL - Bloat Detailed Analysis'
-    WHEN extname = 'pg_trgm' THEN 'OPTIONAL - Text Search'
-    ELSE 'OTHER' 
-  END as category
-FROM pg_extension
-ORDER BY extname;
+WITH known_extensions AS (
+  SELECT * FROM (VALUES
+    ('pg_stat_statements',  'CRITICAL',      'SQL-level performance monitoring; tracks calls, timing, rows, I/O per query'),
+    ('pg_wait_sampling',    'CRITICAL',      'Wait event histograms; essential for identifying bottlenecks'),
+    ('apg_plan_mgmt',       'AURORA',        'Aurora plan management (APM); stabilises query plans'),
+    ('auto_explain',        'IMPORTANT',     'Logs query execution plans for slow queries automatically'),
+    ('pg_cron',             'USEFUL',        'Schedule SQL jobs inside PostgreSQL (maintenance, purges)'),
+    ('pg_prewarm',          'USEFUL',        'Pre-load relation data into buffer cache after restart'),
+    ('pg_hint_plan',        'USEFUL',        'Allows optimizer hints in SQL comments'),
+    ('pgaudit',             'COMPLIANCE',    'Detailed session and object audit logging for compliance'),
+    ('pg_partman',          'USEFUL',        'Automated partition management for time/serial partitioned tables'),
+    ('pg_trgm',             'OPTIONAL',      'Trigram-based text similarity search; supports LIKE indexes'),
+    ('pageinspect',         'DIAGNOSTIC',    'Low-level page inspection; useful for bloat analysis'),
+    ('pgstattuple',         'DIAGNOSTIC',    'Accurate tuple-level bloat stats per table')
+  ) AS t(extname, importance, purpose)
+)
+SELECT
+  ke.extname                 AS extension,
+  ke.importance,
+  ke.purpose,
+  CASE WHEN e.extname IS NOT NULL THEN e.extversion ELSE NULL END AS installed_version,
+  CASE WHEN e.extname IS NOT NULL THEN 'INSTALLED' ELSE 'NOT INSTALLED' END AS status,
+  CASE WHEN e.extname IS NULL
+    THEN 'CREATE EXTENSION IF NOT EXISTS ' || ke.extname || ';'
+    ELSE 'n/a'
+  END                        AS install_command
+FROM known_extensions ke
+LEFT JOIN pg_extension e ON e.extname = ke.extname
+ORDER BY
+  CASE ke.importance
+    WHEN 'CRITICAL'    THEN 1
+    WHEN 'AURORA'      THEN 2
+    WHEN 'IMPORTANT'   THEN 3
+    WHEN 'COMPLIANCE'  THEN 4
+    WHEN 'USEFUL'      THEN 5
+    WHEN 'DIAGNOSTIC'  THEN 6
+    ELSE 7
+  END,
+  ke.extname;
 
-\qecho <h3>Missing Critical Extensions</h3>
+\qecho <h3>Shared Preload Libraries</h3>
 
-SELECT 
-  'pg_stat_statements' as missing_extension,
-  CASE 
-    WHEN (SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements') > 0 THEN 'INSTALLED'
-    ELSE 'MISSING - CRITICAL for performance monitoring' 
-  END as status
-UNION ALL SELECT 
-  'pg_wait_sampling',
-  CASE 
-    WHEN (SELECT count(*) FROM pg_extension WHERE extname = 'pg_wait_sampling') > 0 THEN 'INSTALLED'
-    ELSE 'MISSING - Important for wait analysis' 
-  END
-UNION ALL SELECT 
-  'auto_explain',
-  CASE 
-    WHEN (SELECT count(*) FROM pg_extension WHERE extname = 'auto_explain') > 0 THEN 'INSTALLED'
-    ELSE 'NOT INSTALLED - Useful for slow query analysis' 
-  END;
+SELECT
+  current_setting('shared_preload_libraries') AS shared_preload_libraries,
+  CASE
+    WHEN current_setting('shared_preload_libraries') LIKE '%pg_stat_statements%' THEN 'pg_stat_statements: LOADED'
+    ELSE 'pg_stat_statements: NOT in preload (add to parameter group and reboot)'
+  END AS pgss_status,
+  CASE
+    WHEN current_setting('shared_preload_libraries') LIKE '%auto_explain%' THEN 'auto_explain: LOADED'
+    ELSE 'auto_explain: not preloaded'
+  END AS auto_explain_status,
+  CASE
+    WHEN current_setting('shared_preload_libraries') LIKE '%pg_wait_sampling%' THEN 'pg_wait_sampling: LOADED'
+    ELSE 'pg_wait_sampling: not preloaded'
+  END AS wait_sampling_status;
 
-\qecho <h3>Observability Settings Check</h3>
+\qecho <h3>Observability Settings Assessment</h3>
 
-SELECT 
-  'shared_preload_libraries' as setting,
-  current_setting('shared_preload_libraries') as value
-UNION ALL SELECT 
-  'log_statement', current_setting('log_statement')
-UNION ALL SELECT 
-  'log_min_duration_statement', current_setting('log_min_duration_statement')
-UNION ALL SELECT 
-  'log_duration', current_setting('log_duration')
-UNION ALL SELECT 
-  'log_lock_waits', current_setting('log_lock_waits')
-UNION ALL SELECT 
-  'log_autovacuum_min_duration', current_setting('log_autovacuum_min_duration');
+SELECT
+  name                         AS parameter,
+  setting                      AS current_value,
+  CASE name
+    WHEN 'log_min_duration_statement' THEN
+      CASE WHEN setting::int = -1     THEN 'CRITICAL - slow query logging disabled'
+           WHEN setting::int > 5000   THEN 'WARNING - threshold very high (> 5 s)'
+           WHEN setting::int > 1000   THEN 'WARNING - consider lowering to 1000 ms'
+           ELSE 'OK'
+      END
+    WHEN 'track_io_timing'            THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'WARNING - IO timing unavailable in pg_stat_statements' END
+    WHEN 'log_lock_waits'             THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'WARNING - lock contention invisible in logs' END
+    WHEN 'log_checkpoints'            THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'INFO - enable for checkpoint diagnostics' END
+    WHEN 'log_autovacuum_min_duration' THEN
+      CASE WHEN setting::int = -1 THEN 'WARNING - autovacuum activity not logged'
+           WHEN setting::int > 250  THEN 'INFO - consider lowering to 250 ms'
+           ELSE 'OK'
+      END
+    WHEN 'track_counts'               THEN CASE WHEN setting = 'on' THEN 'OK' ELSE 'CRITICAL - pg_stat_user_tables stats disabled' END
+    WHEN 'track_functions'            THEN CASE WHEN setting IN ('pl','all') THEN 'OK' ELSE 'INFO - enable for function-level profiling' END
+    ELSE 'OK'
+  END                          AS assessment
+FROM pg_settings
+WHERE name IN (
+  'shared_preload_libraries',
+  'log_min_duration_statement',
+  'log_checkpoints',
+  'log_lock_waits',
+  'log_temp_files',
+  'log_autovacuum_min_duration',
+  'track_io_timing',
+  'track_counts',
+  'track_functions',
+  'log_statement'
+)
+ORDER BY name;
 
-INSERT INTO report_findings SELECT '20. Observability', 'warning', 'Extension and observability configuration reviewed', 'Install pg_stat_statements if missing, verify logging is enabled', (SELECT count(*)::text FROM pg_extension);
+-- Findings for missing critical extensions
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '20. Observability',
+  'critical',
+  'pg_stat_statements is NOT installed - SQL-level performance monitoring is unavailable',
+  'Add pg_stat_statements to shared_preload_libraries in the parameter group, reboot, then run: CREATE EXTENSION IF NOT EXISTS pg_stat_statements;',
+  'NOT INSTALLED'
+WHERE NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements');
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '20. Observability',
+  'critical',
+  'Slow query logging is disabled (log_min_duration_statement = -1)',
+  'Set log_min_duration_statement = 1000 in parameter group to capture slow queries',
+  '-1'
+WHERE current_setting('log_min_duration_statement')::int = -1;
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '20. Observability',
+  'warning',
+  'track_io_timing is OFF - I/O breakdown missing from pg_stat_statements',
+  'Set track_io_timing = on in parameter group (no restart required on Aurora)',
+  'off'
+WHERE current_setting('track_io_timing') = 'off';
+
+INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
+SELECT
+  '20. Observability',
+  'warning',
+  'log_lock_waits is OFF - lock wait events will not appear in PostgreSQL logs',
+  'Set log_lock_waits = on in parameter group',
+  'off'
+WHERE current_setting('log_lock_waits') = 'off';
 
 \qecho </section>
 
-\qecho <section><h2>Summary: Findings & Recommendations</h2>
-\qecho <h3>Critical Findings</h3>
+\qecho <section><h2>Summary: Findings &amp; Recommendations</h2>
 
-SELECT 
+\qecho <h3>Health Score</h3>
+
+SELECT
+  crit.n                                             AS critical_count,
+  warn.n                                             AS warning_count,
+  info.n                                             AS info_count,
+  GREATEST(0, 100 - (crit.n * 10) - (warn.n * 3))   AS health_score,
+  CASE
+    WHEN GREATEST(0, 100 - (crit.n * 10) - (warn.n * 3)) >= 90 THEN 'HEALTHY'
+    WHEN GREATEST(0, 100 - (crit.n * 10) - (warn.n * 3)) >= 70 THEN 'CAUTION'
+    WHEN GREATEST(0, 100 - (crit.n * 10) - (warn.n * 3)) >= 50 THEN 'WARNING'
+    ELSE 'CRITICAL'
+  END                                                AS overall_status
+FROM
+  (SELECT count(*)::int AS n FROM report_findings WHERE severity = 'critical') crit,
+  (SELECT count(*)::int AS n FROM report_findings WHERE severity = 'warning')  warn,
+  (SELECT count(*)::int AS n FROM report_findings WHERE severity = 'info')     info;
+
+\qecho <h3>DBA Quick Dashboard</h3>
+
+SELECT
+  metric,
+  value,
+  assessment
+FROM (
+
+  SELECT 1 AS ord, 'Connection Saturation' AS metric,
+    round((SELECT count(*)::numeric FROM pg_stat_activity WHERE state IS NOT NULL)
+          / current_setting('max_connections')::numeric * 100, 1)::text || '%' AS value,
+    CASE WHEN (SELECT count(*)::numeric FROM pg_stat_activity WHERE state IS NOT NULL)
+              / current_setting('max_connections')::numeric > 0.80 THEN 'CRITICAL'
+         WHEN (SELECT count(*)::numeric FROM pg_stat_activity WHERE state IS NOT NULL)
+              / current_setting('max_connections')::numeric > 0.60 THEN 'WARNING'
+         ELSE 'OK' END AS assessment
+
+  UNION ALL
+  SELECT 2, 'Cache Hit Ratio',
+    round(100.0 * sum(blks_hit)::numeric / NULLIF(sum(blks_hit + blks_read), 0), 2)::text || '%',
+    CASE WHEN round(100.0 * sum(blks_hit)::numeric / NULLIF(sum(blks_hit + blks_read), 0), 2) < 90
+         THEN 'WARNING - consider increasing shared_buffers or effective_cache_size'
+         ELSE 'OK' END
+  FROM pg_stat_database WHERE datname = current_database()
+
+  UNION ALL
+  SELECT 3, 'Long Transactions (> 5 min)',
+    (SELECT count(*)::text FROM pg_stat_activity
+     WHERE xact_start < now() - interval '5 minutes' AND state != 'idle'),
+    CASE WHEN (SELECT count(*) FROM pg_stat_activity
+               WHERE xact_start < now() - interval '5 minutes' AND state != 'idle') > 0
+         THEN 'WARNING' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 4, 'Blocking Sessions (lock wait)',
+    (SELECT count(*)::text FROM pg_stat_activity WHERE wait_event_type = 'Lock'),
+    CASE WHEN (SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock') > 0
+         THEN 'WARNING' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 5, 'Tables Needing Vacuum (overdue)',
+    (SELECT count(*)::text FROM pg_stat_user_tables
+     WHERE n_dead_tup > (
+       current_setting('autovacuum_vacuum_threshold')::numeric
+       + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+     ) AND schemaname NOT LIKE 'pg_temp%'),
+    CASE WHEN (SELECT count(*) FROM pg_stat_user_tables
+               WHERE n_dead_tup > (
+                 current_setting('autovacuum_vacuum_threshold')::numeric
+                 + current_setting('autovacuum_vacuum_scale_factor')::numeric * n_live_tup
+               ) AND schemaname NOT LIKE 'pg_temp%') > 5
+         THEN 'WARNING' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 6, 'Tables with High Bloat (> 20% dead)',
+    (SELECT count(*)::text FROM pg_stat_user_tables
+     WHERE round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20
+       AND schemaname NOT LIKE 'pg_temp%'),
+    CASE WHEN (SELECT count(*) FROM pg_stat_user_tables
+               WHERE round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20
+                 AND schemaname NOT LIKE 'pg_temp%') > 0
+         THEN 'WARNING' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 7, 'Checkpoint Completion Target',
+    current_setting('checkpoint_completion_target'),
+    CASE WHEN current_setting('checkpoint_completion_target')::numeric < 0.9
+         THEN 'WARNING - set to 0.9 to spread checkpoint IO'
+         ELSE 'OK' END
+
+  UNION ALL
+  SELECT 8, 'Replica Lag (max replay_lag)',
+    COALESCE((SELECT max(extract(epoch FROM replay_lag))::text || ' s'
+              FROM pg_stat_replication), 'No standbys connected'),
+    CASE WHEN (SELECT max(extract(epoch FROM replay_lag)) FROM pg_stat_replication) > 30
+         THEN 'CRITICAL' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 9, 'Top SQL Monitoring (pg_stat_statements)',
+    CASE WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')
+         THEN 'INSTALLED' ELSE 'NOT INSTALLED' END,
+    CASE WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')
+         THEN 'CRITICAL' ELSE 'OK' END
+
+  UNION ALL
+  SELECT 10, 'Slow Query Logging (log_min_duration_statement)',
+    current_setting('log_min_duration_statement') || ' ms',
+    CASE WHEN current_setting('log_min_duration_statement')::int = -1 THEN 'CRITICAL - disabled'
+         WHEN current_setting('log_min_duration_statement')::int > 5000 THEN 'WARNING'
+         ELSE 'OK' END
+
+) dashboard
+ORDER BY ord;
+
+\qecho <h3>CRITICAL Findings (action required)</h3>
+
+SELECT
   section,
   severity,
   finding,
-  recommendation
+  recommendation,
+  metric_value
 FROM report_findings
 WHERE severity = 'critical'
-ORDER BY section;
+ORDER BY section, finding;
 
-\qecho <h3>Warning Findings</h3>
+\qecho <h3>WARNING Findings (review recommended)</h3>
 
-SELECT 
+SELECT
   section,
   severity,
   finding,
-  recommendation
+  recommendation,
+  metric_value
 FROM report_findings
 WHERE severity = 'warning'
-ORDER BY section;
+ORDER BY section, finding;
 
 \qecho <h3>Informational Items</h3>
 
-SELECT 
+SELECT
   section,
   severity,
   finding,
-  recommendation
+  recommendation,
+  metric_value
 FROM report_findings
 WHERE severity = 'info'
-ORDER BY section;
+ORDER BY section, finding;
 
-\qecho <h3>Health Score Summary</h3>
+\qecho <h3>Finding Count Summary</h3>
 
-SELECT 
-  (SELECT count(*) FROM report_findings WHERE severity = 'critical') as critical_issues,
-  (SELECT count(*) FROM report_findings WHERE severity = 'warning') as warning_issues,
-  (SELECT count(*) FROM report_findings WHERE severity = 'info') as info_items,
-  CASE 
-    WHEN (SELECT count(*) FROM report_findings WHERE severity = 'critical') > 0 THEN 'CRITICAL'
-    WHEN (SELECT count(*) FROM report_findings WHERE severity = 'warning') >= 3 THEN 'WARNING'
-    WHEN (SELECT count(*) FROM report_findings WHERE severity = 'warning') >= 1 THEN 'CAUTION'
-    ELSE 'HEALTHY' 
-  END as overall_health;
+SELECT
+  (SELECT count(*) FROM report_findings WHERE severity = 'critical') AS critical_findings,
+  (SELECT count(*) FROM report_findings WHERE severity = 'warning')  AS warning_findings,
+  (SELECT count(*) FROM report_findings WHERE severity = 'info')     AS info_items,
+  (SELECT count(*) FROM report_findings)                             AS total_findings;
 
 \qecho </section>
 \qecho </body></html>
