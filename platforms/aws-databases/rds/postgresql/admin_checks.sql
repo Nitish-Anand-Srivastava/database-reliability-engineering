@@ -1,5 +1,8 @@
--- AWS RDS PostgreSQL admin checks
-SELECT now(), current_setting('server_version'), current_setting('rds.extensions');
-SELECT * FROM pg_stat_replication;
-SELECT datname, numbackends, blks_hit, blks_read FROM pg_stat_database;
-SELECT pid, usename, wait_event_type, wait_event, query_start FROM pg_stat_activity WHERE state <> 'idle';
+\set ON_ERROR_STOP on
+\pset pager off
+
+\echo Install helper functions first if needed
+\echo Recommended: \i 00_install_rds_pg_troubleshooting.sql
+\echo
+\echo Running first-pass incident triage
+\ir 10_incident_triage.sql
