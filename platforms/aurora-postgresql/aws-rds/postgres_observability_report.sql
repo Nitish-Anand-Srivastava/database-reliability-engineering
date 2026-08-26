@@ -644,32 +644,26 @@ FROM pg_stat_database WHERE datname = current_database();
 
 \qecho <h3>Checkpoint Activity</h3>
 
+\if :has_checkpointer
 SELECT 
   'Checkpoints (timed)' as checkpoint_type,
-  (SELECT checkpoints_timed FROM pg_stat_bgwriter) as count
-UNION ALL SELECT 
-  'Checkpoints (requested)',
-  (SELECT checkpoints_req FROM pg_stat_bgwriter)::text
-UNION ALL SELECT 
-  'Checkpoint Write Time (ms)',
-  (SELECT checkpoint_write_time FROM pg_stat_bgwriter)::text
-UNION ALL SELECT 
-  'Checkpoint Sync Time (ms)',
-  (SELECT checkpoint_sync_time FROM pg_stat_bgwriter)::text;
+  num_timed::text as count
+FROM pg_stat_checkpointer
+UNION ALL SELECT 'Checkpoints (requested)', num_requested::text FROM pg_stat_checkpointer
+UNION ALL SELECT 'Checkpoint Write Time (ms)', write_time::text FROM pg_stat_checkpointer
+UNION ALL SELECT 'Checkpoint Sync Time (ms)', sync_time::text FROM pg_stat_checkpointer
+UNION ALL SELECT 'Buffers Written', buffers_written::text FROM pg_stat_checkpointer;
+\else
+SELECT 
+  'bgwriter_buffers_clean' as metric, buffers_clean::text as value FROM pg_stat_bgwriter
+UNION ALL SELECT 'bgwriter_maxwritten_clean', maxwritten_clean::text FROM pg_stat_bgwriter
+UNION ALL SELECT 'bgwriter_buffers_alloc', buffers_alloc::text FROM pg_stat_bgwriter;
+\endif
 
 \if :has_checkpointer
-\qecho <h3>Checkpoint Progress (if active)</h3>
-
 SELECT 
-  checkpointer_pid,
-  backup_start_time,
-  CASE 
-    WHEN checkpointer_pid IS NOT NULL THEN 'IN_PROGRESS'
-    ELSE 'IDLE' 
-  END as status
-FROM pg_stat_progress_basebackup
-LIMIT 1;
-
+  'Checkpointer Activity' as metric,
+  (SELECT (num_timed + num_requested)::text FROM pg_stat_checkpointer) as value;
 \endif
 
 INSERT INTO report_findings SELECT '15. WAL Analysis', 'info', 'WAL throughput and checkpoint metrics collected', 'Monitor WAL accumulation and checkpoint frequency', 'Complete';
@@ -693,8 +687,8 @@ ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC LIMIT 30;
 
 SELECT 
   schemaname,
-  tablename,
-  indexname,
+  relname as tablename,
+  indexrelname as indexname,
   pg_size_pretty(pg_relation_size(indexrelid)) as index_size,
   idx_scan,
   CASE 
@@ -783,14 +777,9 @@ ORDER BY pubname;
 
 SELECT 
   subname,
-  subdbname,
-  subconninfo,
   subslotname,
   subenabled,
-  CASE 
-    WHEN subenabled THEN 'ENABLED'
-    ELSE 'DISABLED' 
-  END as status
+  CASE WHEN subenabled THEN 'ENABLED' ELSE 'DISABLED' END as status
 FROM pg_subscription
 ORDER BY subname;
 
@@ -1009,22 +998,22 @@ ORDER BY rows DESC LIMIT 25;
 WITH query_stats AS (
   SELECT 
     left(query, 80) as query,
-    calls,
+    sum(calls) as total_calls,
     min(mean_exec_time) as min_mean_time,
     max(mean_exec_time) as max_mean_time,
-    round(stddev(mean_exec_time), 2) as stddev_time,
+    round(stddev(mean_exec_time)::numeric, 2) as stddev_time,
     CASE 
       WHEN max(mean_exec_time) > min(mean_exec_time) * 2 THEN 'HIGH'
       WHEN max(mean_exec_time) > min(mean_exec_time) * 1.5 THEN 'MEDIUM'
       ELSE 'LOW' 
     END as variability
   FROM pg_stat_statements
-  GROUP BY query
+  GROUP BY left(query, 80)
   HAVING count(*) > 1
 )
 SELECT 
   query,
-  calls,
+  total_calls as calls,
   round(min_mean_time::numeric, 2) as min_ms,
   round(max_mean_time::numeric, 2) as max_ms,
   stddev_time,
@@ -1182,24 +1171,14 @@ ORDER BY t.n_dead_tup DESC LIMIT 30;
 \qecho <section><h2>Extended Analysis: Checkpoint Efficiency</h2>
 \qecho <h3>Background Writer Performance</h3>
 
-SELECT 
-  'Background Writer Checkpoints' as metric,
-  checkpoints_timed::text as value
+SELECT
+  'bgwriter_buffers_clean' as metric, buffers_clean::text as value
 FROM pg_stat_bgwriter
-UNION ALL SELECT 
-  'On-Demand Checkpoints', checkpoints_req::text
+UNION ALL SELECT
+  'bgwriter_maxwritten_clean', maxwritten_clean::text
 FROM pg_stat_bgwriter
-UNION ALL SELECT 
-  'Checkpoint Frequency', round((checkpoints_timed + checkpoints_req)::numeric / (extract(epoch from (now() - pg_postmaster_start_time())) / 3600), 2)::text || ' per hour'
-FROM pg_stat_bgwriter
-UNION ALL SELECT 
-  'Pages Written by Checkpointer', buffers_checkpoint::text
-FROM pg_stat_bgwriter
-UNION ALL SELECT 
-  'Pages Written by Background Writer', buffers_bgwriter::text
-FROM pg_stat_bgwriter
-UNION ALL SELECT 
-  'Pages Cleaned by Backends', buffers_backend::text
+UNION ALL SELECT
+  'bgwriter_buffers_alloc', buffers_alloc::text
 FROM pg_stat_bgwriter;
 
 \qecho </section>
