@@ -25,10 +25,6 @@ Example:
 
 ```bash
 psql \
-  -v report_file=/tmp/or_postgres_observability_report.html \
-  -v top_sessions=25 \
-  -v top_sql=30 \
-  -v top_tables=25 \
   -f ../aws-rds/postgres_observability_report.sql
 ```
 
@@ -36,7 +32,7 @@ That script:
 
 - does **not** create schemas
 - does **not** create helper functions
-- writes a local HTML report
+- writes `postgres_observability_report.html` in the current working directory
 - limits output to top resource consumers
 
 If you are troubleshooting live production performance, use that path first.

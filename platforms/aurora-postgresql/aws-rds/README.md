@@ -7,34 +7,29 @@ This folder contains the **AWS RDS PostgreSQL troubleshooting toolkit** for the 
 Use the single-file HTML report:
 
 - `postgres_observability_report.sql`
-- `postgres_configuration_gap_report.sql`
 
 It is designed for production-safe use because it:
 
 - does **not** create schemas
 - does **not** create helper functions
 - focuses on **top resource-consuming sessions and SQL**
-- generates a local HTML **Postgres Observability Report**
+- includes both **performance troubleshooting** and **configuration-gap detection**
+- generates a local HTML **Postgres Observability Report** with red-highlighted critical findings
 
 Example:
 
 ```bash
 psql \
-  -v report_file=/tmp/or_postgres_observability_report.html \
-  -v top_sessions=25 \
-  -v top_sql=30 \
-  -v top_tables=25 \
   -f postgres_observability_report.sql
 ```
 
-Configuration anomaly review:
+Output file:
 
-```bash
-psql \
-  -v report_file=/tmp/or_postgres_configuration_gap_report.html \
-  -v top_tables=30 \
-  -f postgres_configuration_gap_report.sql
-```
+- `postgres_observability_report.html` (written to your current working directory)
+
+Optional legacy-only companion:
+
+- `postgres_configuration_gap_report.sql` (kept for teams that want a standalone config-only report)
 
 ## Optional deeper workflow
 
