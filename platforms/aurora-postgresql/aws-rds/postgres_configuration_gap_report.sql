@@ -5,16 +5,6 @@
 \pset format html
 \pset tableattr 'class="report-table"'
 
-\if :{?report_file}
-\else
-\set report_file or_postgres_configuration_gap_report.html
-\endif
-
-\if :{?top_tables}
-\else
-\set top_tables 30
-\endif
-
 \qecho <!DOCTYPE html>
 \o :report_file
 \qecho <html lang="en">
