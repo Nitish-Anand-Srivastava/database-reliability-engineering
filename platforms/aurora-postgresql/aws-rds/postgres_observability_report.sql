@@ -6,11 +6,11 @@
 \pset tableattr 'class="report-table"'
 
 -- Feature detection
-SELECT (to_regclass('public.pg_stat_statements') IS NOT NULL)::int AS has_pgss \gset
-SELECT (to_regclass('public.pg_stat_io') IS NOT NULL)::int AS has_pgss_io \gset
+SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')::int AS has_pgss \gset
+SELECT (to_regclass('pg_catalog.pg_stat_io') IS NOT NULL)::int AS has_pgss_io \gset
 SELECT (to_regclass('pg_catalog.pg_stat_checkpointer') IS NOT NULL)::int AS has_checkpointer \gset
-SELECT (to_regclass('public.pg_wait_sampling_history') IS NOT NULL)::int AS has_wait_sampling \gset
-SELECT (to_regclass('public.apg_plan_mgmt') IS NOT NULL)::int AS has_apg_plan_mgmt \gset
+SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_wait_sampling')::int AS has_wait_sampling \gset
+SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'apg_plan_mgmt')::int AS has_apg_plan_mgmt \gset
 SELECT (current_setting('server_version_num')::int >= 110000)::int AS has_v11 \gset
 SELECT (current_setting('server_version_num')::int >= 130000)::int AS has_v13 \gset
 SELECT (current_setting('server_version_num')::int >= 140000)::int AS has_v14 \gset
@@ -1106,6 +1106,7 @@ ORDER BY n_dead_tup DESC LIMIT 30;
 \qecho <section><h2>Extended Analysis: Query Cache Efficiency</h2>
 \qecho <h3>Cached Query Performance Impact</h3>
 
+\if :has_pgss
 \if :has_pgss_io_timing
 WITH top_queries AS (
   SELECT 
@@ -1138,6 +1139,9 @@ SELECT
 FROM pg_stat_statements
 WHERE calls > 10
 ORDER BY total_exec_time DESC LIMIT 25;
+\endif
+\else
+SELECT 'pg_stat_statements extension not enabled on this instance' AS notice;
 \endif
 
 \qecho </section>
