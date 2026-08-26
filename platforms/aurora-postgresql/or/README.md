@@ -1,18 +1,45 @@
 # Aurora PostgreSQL Observability Report
 
-This folder provides an **Aurora PostgreSQL observability reporting flow** that is safe enough to run on a busy production estate:
+This folder provides an **Aurora PostgreSQL observability reporting flow** that is safe enough to run on a busy production estate.
 
-- stores lightweight **cumulative snapshots** in PostgreSQL
-- generates a **local HTML report** on the remote Linux host
-- supports **automatic 30-minute reports**
-- supports **manual start/end interval reports**
+There are now **two modes**:
 
-It is designed for high-throughput systems where millions of low-latency queries happen between samples. The report therefore leans on:
+1. **Preferred production mode**: run a **single SQL file** that generates an HTML **Postgres Observability Report** without creating persistent schemas or helper functions.
+2. **Optional interval mode**: use the installable repository and shell runners only when object creation is acceptable and you specifically want recurring interval snapshots.
+
+The production-safe single-report workflow is designed for high-throughput systems where hundreds of sessions and millions of low-latency queries may be active. It therefore leans on:
 
 - cumulative PostgreSQL counters
-- `pg_stat_statements` deltas
-- end-of-interval table, index, vacuum, IO, and session posture
-- start/end wait snapshots instead of continuous ASH-style sampling
+- top resource-consuming sessions
+- top SQL from `pg_stat_statements` when available
+- top churn-heavy tables and maintenance signals
+- RDS- and PostgreSQL-specific posture checks rather than invasive sampling
+
+## Recommended production workflow
+
+Run the single SQL report from:
+
+- `../aws-rds/postgres_observability_report.sql`
+
+Example:
+
+```bash
+psql \
+  -v report_file=/tmp/or_postgres_observability_report.html \
+  -v top_sessions=25 \
+  -v top_sql=30 \
+  -v top_tables=25 \
+  -f ../aws-rds/postgres_observability_report.sql
+```
+
+That script:
+
+- does **not** create schemas
+- does **not** create helper functions
+- writes a local HTML report
+- limits output to top resource consumers
+
+If you are troubleshooting live production performance, use that path first.
 
 ## Folder layout
 
@@ -46,18 +73,29 @@ or/
    - `pg_stat_user_tables`
    - `pg_stat_user_indexes`
 
+## Optional interval mode
+
+The remaining files in this folder support the heavier interval-snapshot workflow:
+
+- stores lightweight **cumulative snapshots** in PostgreSQL
+- generates a local HTML report on the remote Linux host
+- supports automatic 30-minute reports
+- supports manual start/end interval reports
+
+Use this mode only when the environment allows creating the `dbre_or` schema and related objects.
+
 ## Download only this folder on Linux
 
-If you only want the OR tooling and do not want to clone the repository, first extract `aurora-postgresql-dbre/` and then work from the `or/` subfolder.
+If you only want the OR tooling and do not want to clone the repository, first extract `platforms/aurora-postgresql/` and then work from the `or/` subfolder.
 
 ### Upstream `main`
 
 ```bash
-mkdir -p /opt/aurora-postgresql-dbre
-cd /opt/aurora-postgresql-dbre
+mkdir -p /opt/aurora-postgresql-platform
+cd /opt/aurora-postgresql-platform
 curl -L https://github.com/Nitish-Anand-Srivastava/database-reliability-engineering/tarball/main \
-  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
-cd /opt/aurora-postgresql-dbre/or
+  | tar -xz --strip-components=3 --wildcards '*/platforms/aurora-postgresql/*'
+cd /opt/aurora-postgresql-platform/or
 ```
 
 ### Current feature branch
@@ -65,11 +103,11 @@ cd /opt/aurora-postgresql-dbre/or
 Use this if you want the newest branch content before it lands on upstream `main`.
 
 ```bash
-mkdir -p /opt/aurora-postgresql-dbre
-cd /opt/aurora-postgresql-dbre
+mkdir -p /opt/aurora-postgresql-platform
+cd /opt/aurora-postgresql-platform
 curl -L https://github.com/nitishanandsrivastava/database-reliability-engineering/tarball/nitish-a-srivastava-ion-aurora-dbre-framework \
-  | tar -xz --strip-components=1 --wildcards '*/aurora-postgresql-dbre/*'
-cd /opt/aurora-postgresql-dbre/or
+  | tar -xz --strip-components=3 --wildcards '*/platforms/aurora-postgresql/*'
+cd /opt/aurora-postgresql-platform/or
 ```
 
 ## Configuration
@@ -92,7 +130,7 @@ This is the most direct way to deploy it on a remote Linux host that can reach A
 ### 1. Change into the OR folder
 
 ```bash
-cd /opt/database-reliability-engineering/aurora-postgresql-dbre/or
+cd /opt/database-reliability-engineering/platforms/aurora-postgresql/or
 ```
 
 Adjust the path for wherever the repository lives on the host.
@@ -262,7 +300,7 @@ OR_CONFIG=/tmp/or_report.env ./scripts/orctl.sh report --start-id 101 --end-id 1
 ## Typical manual shell session
 
 ```bash
-cd /opt/database-reliability-engineering/aurora-postgresql-dbre/or
+cd /opt/database-reliability-engineering/platforms/aurora-postgresql/or
 chmod 750 scripts/orctl.sh scripts/install_or_cron.sh
 cp config/or_report.env /tmp/or_report.env
 vi /tmp/or_report.env

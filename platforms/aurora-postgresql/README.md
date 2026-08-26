@@ -4,6 +4,7 @@ This is the **primary Aurora PostgreSQL working area** for the repository.
 
 ## What lives here
 
+- `aws-rds/` — AWS RDS PostgreSQL performance troubleshooting and the single-file HTML Postgres Observability Report
 - `or/` — Aurora PostgreSQL Observability Report tooling
 - `sql/` — consultant-style diagnostics and operational SQL
 - `infrastructure/` — Aurora, RDS Proxy, DynamoDB, and Redis infrastructure examples

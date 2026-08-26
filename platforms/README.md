@@ -6,8 +6,9 @@ This area contains **engine-specific and platform-specific DBRE toolkits**.
 
 - `aurora-postgresql/` — primary Aurora PostgreSQL and AWS DBRE toolkit
 - `postgresql/` — general PostgreSQL operational references
-- `aws-databases/` — AWS RDS and cloud database platform notes
 - `redis/` — Redis / ElastiCache operational material
+
+Historical AWS database material that is no longer part of the active opinionated structure has been moved under `archive/`.
 
 ## Guidance
 
