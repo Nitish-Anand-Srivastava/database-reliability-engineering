@@ -1,9 +1,8 @@
 \set ON_ERROR_STOP on
+\set QUIET on
 \pset pager off
 \pset border 1
 \pset footer off
-\pset format html
-\pset tableattr 'class="report-table"'
 
 -- Feature detection
 SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')::int AS has_pgss \gset
@@ -14,6 +13,19 @@ SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'apg_plan_mgmt')::int A
 SELECT (current_setting('server_version_num')::int >= 110000)::int AS has_v11 \gset
 SELECT (current_setting('server_version_num')::int >= 130000)::int AS has_v13 \gset
 SELECT (current_setting('server_version_num')::int >= 140000)::int AS has_v14 \gset
+
+\o NUL
+CREATE TEMP TABLE report_findings (
+  section TEXT,
+  severity TEXT,
+  finding TEXT,
+  recommendation TEXT,
+  metric_value TEXT
+);
+\o
+
+\pset format html
+\pset tableattr 'class="report-table"'
 
 -- Feature detection for pg_stat_statements IO timing columns
 SELECT (
@@ -53,8 +65,6 @@ SELECT (
     ELSE false
   END
 )::int AS has_pgss_temp_columns \gset
-
-CREATE TEMP TABLE report_findings (section TEXT, severity TEXT, finding TEXT, recommendation TEXT, metric_value TEXT);
 
 \qecho <html><head><meta charset="UTF-8"><title>PostgreSQL Aurora Observability</title>
 \qecho <style>
@@ -107,13 +117,13 @@ SELECT
   CASE s.name
     WHEN 'shared_buffers'                THEN '25% of RAM (e.g. 8GB on 32GB instance)'
     WHEN 'work_mem'                      THEN '4MB - 64MB depending on concurrency'
-    WHEN 'maintenance_work_mem'          THEN '256MB or more'
-    WHEN 'effective_cache_size'          THEN '75% of RAM'
+    WHEN 'maintenance_work_mem'          THEN '256MB or more (workload dependent)'
+    WHEN 'effective_cache_size'          THEN 'Approx. 75% of RAM (instance-memory dependent)'
     WHEN 'max_connections'              THEN '<= 500 (use PgBouncer for more)'
     WHEN 'wal_buffers'                   THEN '16MB or more (-1 = auto is acceptable)'
     WHEN 'checkpoint_completion_target'  THEN '0.9'
-    WHEN 'random_page_cost'             THEN '1.1 (Aurora SSD)'
-    WHEN 'effective_io_concurrency'     THEN '200 (SSD)'
+    WHEN 'random_page_cost'             THEN 'Candidate for workload validation; often near 1.1 on Aurora SSD'
+    WHEN 'effective_io_concurrency'     THEN 'Candidate for SSD/Aurora tuning; validate against workload'
     WHEN 'log_min_duration_statement'   THEN '<= 1000 ms (or 250 for detailed)'
     WHEN 'log_lock_waits'               THEN 'on'
     WHEN 'autovacuum'                   THEN 'on'
@@ -137,9 +147,9 @@ SELECT
     WHEN 'checkpoint_completion_target' THEN
       CASE WHEN s.setting::numeric >= 0.9 THEN 'OK' ELSE 'WARNING' END
     WHEN 'random_page_cost' THEN
-      CASE WHEN s.setting::numeric <= 1.5 THEN 'OK' ELSE 'WARNING' END
+      CASE WHEN s.setting::numeric <= 2.0 THEN 'REVIEW - validate with plans' ELSE 'WARNING - high for SSD' END
     WHEN 'effective_io_concurrency' THEN
-      CASE WHEN s.setting::int >= 100 THEN 'OK' ELSE 'WARNING' END
+      CASE WHEN s.setting::int >= 100 THEN 'REVIEW - validate on Aurora/SSD' ELSE 'INFO' END
     WHEN 'max_connections' THEN
       CASE WHEN s.setting::int > 500 THEN 'WARNING' ELSE 'OK' END
     WHEN 'autovacuum_max_workers' THEN
@@ -162,8 +172,8 @@ SELECT
     WHEN 'autovacuum'                 THEN 'Must be on; disabling causes bloat and XID wraparound'
     WHEN 'track_io_timing'            THEN 'Enables IO timing in pg_stat_statements'
     WHEN 'checkpoint_completion_target' THEN 'Spreads checkpoint IO; 0.9 reduces burst writes'
-    WHEN 'random_page_cost'           THEN 'Aurora uses SSD; 1.1 prevents seq scan preference'
-    WHEN 'effective_io_concurrency'   THEN 'Higher value allows more parallel IO for bitmap scans'
+    WHEN 'random_page_cost'           THEN 'Workload-dependent; validate with execution plans before lowering'
+    WHEN 'effective_io_concurrency'   THEN 'Tune based on SSD/Aurora behavior and workload testing'
     WHEN 'max_connections'            THEN 'High values waste memory; use connection pooler'
     WHEN 'autovacuum_max_workers'     THEN 'More workers handle high-churn databases'
     WHEN 'log_autovacuum_min_duration' THEN 'Log slow autovacuums for tuning'
@@ -432,7 +442,7 @@ SELECT
   extract(epoch from (now() - xact_start))::int as xact_age_seconds,
   state,
   application_name
-FROM pg_stat_activity WHERE xact_start IS NOT NULL ORDER BY xact_start LIMIT 20;
+FROM pg_stat_activity WHERE xact_start IS NOT NULL AND pid <> pg_backend_pid() ORDER BY xact_start LIMIT 20;
 
 \qecho <h3>Idle-in-Transaction Sessions</h3>
 
@@ -442,7 +452,7 @@ SELECT
   xact_start,
   extract(epoch from (now() - xact_start))::int as idle_xact_seconds,
   state
-FROM pg_stat_activity WHERE state = 'idle in transaction' ORDER BY xact_start LIMIT 15;
+FROM pg_stat_activity WHERE state = 'idle in transaction' AND pid <> pg_backend_pid() ORDER BY xact_start LIMIT 15;
 
 \qecho <h3>XID Wraparound Risk Assessment</h3>
 
@@ -462,7 +472,7 @@ UNION ALL SELECT
     WHEN (SELECT age(datfrozenxid) FROM pg_database WHERE datname = current_database()) > 500000000 THEN 'MEDIUM' 
     ELSE 'LOW' END;
 
-INSERT INTO report_findings SELECT '7. Long Transactions', 'warning', 'Long-running transactions detected', 'Review and terminate idle-in-transaction sessions', (SELECT count(*)::text FROM pg_stat_activity WHERE xact_start IS NOT NULL);
+INSERT INTO report_findings SELECT '7. Long Transactions', 'warning', 'Long-running transactions detected', 'Review and terminate idle-in-transaction sessions', (SELECT count(*)::text FROM pg_stat_activity WHERE xact_start < now() - interval '5 minutes' AND pid <> pg_backend_pid() AND state <> 'idle') WHERE (SELECT count(*) FROM pg_stat_activity WHERE xact_start < now() - interval '5 minutes' AND pid <> pg_backend_pid() AND state <> 'idle') > 0;
 
 \qecho </section>
 
@@ -562,18 +572,25 @@ SELECT
   schemaname,
   relname       AS table_name,
   indexrelname  AS index_name,
-  idx_scan,
-  pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+  i.indisprimary,
+  i.indisunique,
+  i.indisexclusion,
+  sui.idx_scan,
+  pg_size_pretty(pg_relation_size(sui.indexrelid)) AS index_size,
   CASE
-    WHEN pg_relation_size(indexrelid) > 104857600 THEN 'CRITICAL - Large unused index'
-    WHEN pg_relation_size(indexrelid) > 52428800  THEN 'WARNING - Medium unused index'
+    WHEN pg_relation_size(sui.indexrelid) > 104857600 THEN 'CRITICAL - Large unused index'
+    WHEN pg_relation_size(sui.indexrelid) > 52428800  THEN 'WARNING - Medium unused index'
     ELSE 'INFO'
   END AS severity,
   'DROP INDEX CONCURRENTLY ' || schemaname || '.' || indexrelname || ';' AS suggested_action
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0
+FROM pg_stat_user_indexes sui
+JOIN pg_index i ON i.indexrelid = sui.indexrelid
+WHERE sui.idx_scan = 0
   AND indexrelname NOT LIKE 'pg_toast%'
-ORDER BY pg_relation_size(indexrelid) DESC
+  AND NOT indisprimary
+  AND NOT indisunique
+  AND NOT indisexclusion
+ORDER BY pg_relation_size(sui.indexrelid) DESC
 LIMIT 30;
 
 \qecho <h3>Redundant / Prefix-Duplicate Indexes</h3>
@@ -595,6 +612,8 @@ WITH index_cols AS (
   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = u.attnum AND u.attnum > 0
   WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
     AND NOT i.indisprimary
+    AND NOT i.indisunique
+    AND NOT i.indisexclusion
   GROUP BY i.indexrelid, i.indrelid, ix.relname, t.relname, n.nspname
 )
 SELECT
@@ -661,7 +680,7 @@ SELECT
   '10. Index Analysis',
   CASE WHEN pg_relation_size(indexrelid) > 104857600 THEN 'critical' ELSE 'warning' END,
   'Unused index consuming space: ' || schemaname || '.' || indexrelname || ' on table ' || relname,
-  'DROP INDEX CONCURRENTLY ' || schemaname || '.' || indexrelname || ';',
+  'No scans observed since the statistics reset. Validate against representative workload, query plans, application dependencies, and index creation date before considering removal.',
   pg_size_pretty(pg_relation_size(indexrelid))
 FROM pg_stat_user_indexes
 WHERE idx_scan = 0
@@ -801,7 +820,7 @@ SELECT
   temp_files::text || ' temp files'
 FROM pg_stat_database
 WHERE datname = current_database()
-  AND temp_files > 1000;
+  AND temp_files > 0;
 
 \qecho </section>
 
@@ -1529,9 +1548,9 @@ FROM (
   UNION ALL
   SELECT 3, 'Long Transactions (> 5 min)',
     (SELECT count(*)::text FROM pg_stat_activity
-     WHERE xact_start < now() - interval '5 minutes' AND state != 'idle'),
+     WHERE xact_start < now() - interval '5 minutes' AND state != 'idle' AND pid <> pg_backend_pid()),
     CASE WHEN (SELECT count(*) FROM pg_stat_activity
-               WHERE xact_start < now() - interval '5 minutes' AND state != 'idle') > 0
+              WHERE xact_start < now() - interval '5 minutes' AND state != 'idle' AND pid <> pg_backend_pid()) > 0
          THEN 'WARNING' ELSE 'OK' END
 
   UNION ALL
@@ -1558,10 +1577,12 @@ FROM (
   SELECT 6, 'Tables with High Bloat (> 20% dead)',
     (SELECT count(*)::text FROM pg_stat_user_tables
      WHERE round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20
-       AND schemaname NOT LIKE 'pg_temp%'),
+       AND schemaname NOT LIKE 'pg_temp%'
+       AND pg_total_relation_size(schemaname || '.' || relname) > 10485760),
     CASE WHEN (SELECT count(*) FROM pg_stat_user_tables
                WHERE round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) > 20
-                 AND schemaname NOT LIKE 'pg_temp%') > 0
+                 AND schemaname NOT LIKE 'pg_temp%'
+                 AND pg_total_relation_size(schemaname || '.' || relname) > 10485760) > 0
          THEN 'WARNING' ELSE 'OK' END
 
   UNION ALL
@@ -1646,43 +1667,11 @@ SELECT
 \qecho <!-- Extended Analysis Sections -->
 
 \qecho <section><h2>Extended Analysis: Top SQL by WAL Generation</h2>
-\qecho <h3>Queries Generating Most WAL</h3>
-
-\if :has_pgss_wal_columns
-SELECT 
-  left(query, 100) as query,
-  calls,
-  rows,
-  round((SELECT sum(wal_bytes) FROM pg_stat_statements)::numeric / NULLIF((SELECT sum(calls) FROM pg_stat_statements), 0), 2) as avg_wal_per_call
-FROM pg_stat_statements
-WHERE rows > 0
-ORDER BY rows * calls DESC LIMIT 25;
-\else
-\qecho <p class="info">WAL tracking columns not available in pg_stat_statements on this Aurora instance</p>
-\endif
-
+\qecho <p class="info">Removed: WAL-by-query estimates were not reliable enough for production interpretation.</p>
 \qecho </section>
 
 \qecho <section><h2>Extended Analysis: Temp Space Consumers</h2>
-\qecho <h3>Queries Using Temporary Space</h3>
-
-\if :has_pgss
-SELECT 
-  left(query, 100) as query,
-  calls,
-  CASE 
-    WHEN rows > 100000 THEN 'HIGH'
-    WHEN rows > 10000 THEN 'MEDIUM'
-    ELSE 'LOW' 
-  END as temp_risk,
-  rows as returned_rows,
-  round(total_exec_time::numeric / NULLIF(calls, 0), 2) as avg_time_ms
-FROM pg_stat_statements
-ORDER BY rows DESC LIMIT 25;
-\else
-\qecho <p class="muted">pg_stat_statements not available</p>
-\endif
-
+\qecho <p class="info">Removed: returned row count is not temp-space evidence. Temp spill analysis is now driven by actual temp file and temp block metrics only.</p>
 \qecho </section>
 
 \qecho <section><h2>Extended Analysis: Parameter Sensitivity</h2>
@@ -3795,6 +3784,3 @@ FROM table_stats GROUP BY size_class ORDER BY size_class;
 \qecho <!-- End of comprehensive observability report -->
 
 \q
-
-
-
