@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 \set QUIET on
+\set ECHO none
 \pset pager off
 \pset border 1
 \pset footer off
@@ -14,7 +15,6 @@ SELECT (current_setting('server_version_num')::int >= 110000)::int AS has_v11 \g
 SELECT (current_setting('server_version_num')::int >= 130000)::int AS has_v13 \gset
 SELECT (current_setting('server_version_num')::int >= 140000)::int AS has_v14 \gset
 
-\o NUL
 CREATE TEMP TABLE report_findings (
   section TEXT,
   severity TEXT,
@@ -22,7 +22,6 @@ CREATE TEMP TABLE report_findings (
   recommendation TEXT,
   metric_value TEXT
 );
-\o
 
 \pset format html
 \pset tableattr 'class="report-table"'
@@ -249,17 +248,7 @@ SELECT
   'Slow query logging is completely disabled (log_min_duration_statement = -1)',
   'Set log_min_duration_statement = 1000 (or 250 for detailed capture) to enable slow query detection',
   current_setting('log_min_duration_statement')
-WHERE current_setting('log_min_duration_statement')::int = -1;
-
-INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
-SELECT
-  '2. Configuration',
-  'warning',
-  'Slow query threshold is very high: ' || current_setting('log_min_duration_statement') || ' ms',
-  'Consider lowering log_min_duration_statement to 1000 or less',
-  current_setting('log_min_duration_statement')
-WHERE current_setting('log_min_duration_statement')::int > 1000
-  AND current_setting('log_min_duration_statement')::int != -1;
+WHERE (SELECT setting::int FROM pg_settings WHERE name = 'log_min_duration_statement') = -1;
 
 INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
 SELECT
@@ -269,15 +258,6 @@ SELECT
   'Set track_io_timing = on for IO visibility in query monitoring',
   current_setting('track_io_timing')
 WHERE current_setting('track_io_timing') = 'off';
-
-INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
-SELECT
-  '2. Configuration',
-  'warning',
-  'log_lock_waits is OFF - lock contention will be invisible in logs',
-  'Set log_lock_waits = on to capture lock wait events',
-  current_setting('log_lock_waits')
-WHERE current_setting('log_lock_waits') = 'off';
 
 INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
 SELECT
@@ -582,7 +562,7 @@ SELECT
     WHEN pg_relation_size(sui.indexrelid) > 52428800  THEN 'WARNING - Medium unused index'
     ELSE 'INFO'
   END AS severity,
-  'DROP INDEX CONCURRENTLY ' || schemaname || '.' || indexrelname || ';' AS suggested_action
+  'No scans observed since the statistics interval. Validate workload, creation date, FK usage, and plans before considering removal.' AS review_guidance
 FROM pg_stat_user_indexes sui
 JOIN pg_index i ON i.indexrelid = sui.indexrelid
 WHERE sui.idx_scan = 0
@@ -624,7 +604,7 @@ SELECT
   array_to_string(a.cols, ', ')                            AS redundant_cols,
   array_to_string(b.cols, ', ')                            AS covering_cols,
   pg_size_pretty(pg_relation_size(a.indexrelid))           AS wasted_size,
-  'DROP INDEX CONCURRENTLY ' || a.schema_name || '.' || a.idx_name || ';' AS suggested_action
+  'Potential overlap only; compare definitions, predicates, sort order, included columns, constraint dependencies, and representative plans before any action.' AS review_guidance
 FROM index_cols a
 JOIN index_cols b
   ON  a.indrelid   = b.indrelid
@@ -706,7 +686,7 @@ LIMIT 10;
 \qecho </section>
 
 \qecho <section><h2>11. Statistics Analysis</h2>
-\qecho <h3>Stale Statistics (Not Analyzed Recently)</h3>
+\qecho <h3>Statistics Threshold Review</h3>
 
 SELECT 
   schemaname,
@@ -717,10 +697,20 @@ SELECT
   last_autoanalyze,
   n_live_tup,
   n_dead_tup,
-  round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_tup_ratio_pct
+  round(100.0 * n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_tup_ratio_pct,
+  greatest(last_analyze, last_autoanalyze) as last_stat_time
 FROM pg_stat_user_tables
-WHERE last_analyze IS NULL OR age(last_analyze) > interval '7 days'
-ORDER BY last_analyze NULLS FIRST LIMIT 30;
+WHERE schemaname NOT LIKE 'pg_temp_%'
+  AND schemaname NOT LIKE 'pg_toast_temp_%'
+  AND schemaname NOT IN ('pg_catalog', 'information_schema')
+  AND (
+    n_mod_since_analyze >= (
+      current_setting('autovacuum_analyze_threshold')::numeric
+      + current_setting('autovacuum_analyze_scale_factor')::numeric * n_live_tup
+    )
+    OR last_analyze IS NULL
+  )
+ORDER BY n_mod_since_analyze DESC NULLS LAST LIMIT 30;
 
 \qecho <h3>Table Statistics Summary</h3>
 
@@ -733,6 +723,9 @@ SELECT
   last_analyze,
   pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as table_total_size
 FROM pg_stat_user_tables
+WHERE schemaname NOT LIKE 'pg_temp_%'
+  AND schemaname NOT LIKE 'pg_toast_temp_%'
+  AND schemaname NOT IN ('pg_catalog', 'information_schema')
 ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC LIMIT 30;
 
 \qecho <h3>Autovacuum & Autoanalyze Activity</h3>
@@ -1367,32 +1360,51 @@ INSERT INTO report_findings SELECT '19. Capacity Planning', 'info', 'Growth tren
 
 WITH known_extensions AS (
   SELECT * FROM (VALUES
-    ('pg_stat_statements',  'CRITICAL',      'SQL-level performance monitoring; tracks calls, timing, rows, I/O per query'),
-    ('pg_wait_sampling',    'CRITICAL',      'Wait event histograms; essential for identifying bottlenecks'),
-    ('apg_plan_mgmt',       'AURORA',        'Aurora plan management (APM); stabilises query plans'),
-    ('auto_explain',        'IMPORTANT',     'Logs query execution plans for slow queries automatically'),
-    ('pg_cron',             'USEFUL',        'Schedule SQL jobs inside PostgreSQL (maintenance, purges)'),
-    ('pg_prewarm',          'USEFUL',        'Pre-load relation data into buffer cache after restart'),
-    ('pg_hint_plan',        'USEFUL',        'Allows optimizer hints in SQL comments'),
-    ('pgaudit',             'COMPLIANCE',    'Detailed session and object audit logging for compliance'),
-    ('pg_partman',          'USEFUL',        'Automated partition management for time/serial partitioned tables'),
-    ('pg_trgm',             'OPTIONAL',      'Trigram-based text similarity search; supports LIKE indexes'),
-    ('pageinspect',         'DIAGNOSTIC',    'Low-level page inspection; useful for bloat analysis'),
-    ('pgstattuple',         'DIAGNOSTIC',    'Accurate tuple-level bloat stats per table')
-  ) AS t(extname, importance, purpose)
+    ('pg_stat_statements', 'EXTENSION', 'CRITICAL',   true,  'SQL-level performance monitoring; tracks calls, timing, rows, I/O per query'),
+    ('pg_wait_sampling',   'EXTENSION', 'OPTIONAL',   true,  'Community wait-event sampling; use Aurora Performance Insights when unavailable'),
+    ('apg_plan_mgmt',      'EXTENSION', 'AURORA',     true,  'Aurora plan management (APM); stabilises query plans'),
+    ('auto_explain',       'MODULE',    'IMPORTANT',  true,  'Preloadable PostgreSQL module; it is not installed with CREATE EXTENSION'),
+    ('pg_cron',            'EXTENSION', 'USEFUL',     true,  'Schedule SQL jobs inside PostgreSQL; also requires cron.database_name'),
+    ('pg_prewarm',         'EXTENSION', 'USEFUL',     false, 'Pre-load relation data into buffer cache after restart'),
+    ('pg_hint_plan',       'EXTENSION', 'USEFUL',     true,  'Allows optimizer hints in SQL comments'),
+    ('pgaudit',            'EXTENSION', 'COMPLIANCE', true,  'Detailed session and object audit logging for compliance'),
+    ('pg_partman',         'EXTENSION', 'USEFUL',     false, 'Automated partition management for time/serial partitioned tables'),
+    ('pg_trgm',            'EXTENSION', 'OPTIONAL',   false, 'Trigram-based text similarity search; supports LIKE indexes'),
+    ('pageinspect',        'EXTENSION', 'DIAGNOSTIC', false, 'Low-level page inspection; availability is restricted by the Aurora engine'),
+    ('pgstattuple',        'EXTENSION', 'DIAGNOSTIC', false, 'Accurate tuple-level bloat stats per table')
+  ) AS t(extname, component_type, importance, requires_preload, purpose)
 )
 SELECT
   ke.extname                 AS extension,
+  ke.component_type,
   ke.importance,
   ke.purpose,
-  CASE WHEN e.extname IS NOT NULL THEN e.extversion ELSE NULL END AS installed_version,
-  CASE WHEN e.extname IS NOT NULL THEN 'INSTALLED' ELSE 'NOT INSTALLED' END AS status,
-  CASE WHEN e.extname IS NULL
-    THEN 'CREATE EXTENSION IF NOT EXISTS ' || ke.extname || ';'
-    ELSE 'n/a'
-  END                        AS install_command
+  ae.default_version         AS engine_available_version,
+  e.extversion               AS installed_version,
+  CASE
+    WHEN ke.component_type = 'MODULE'
+      AND position(ke.extname IN current_setting('shared_preload_libraries')) > 0
+      THEN 'PRELOADED MODULE'
+    WHEN ke.component_type = 'MODULE' THEN 'MODULE - NOT PRELOADED'
+    WHEN e.extname IS NOT NULL THEN 'INSTALLED'
+    WHEN ae.name IS NOT NULL THEN 'AVAILABLE - NOT INSTALLED'
+    ELSE 'NOT AVAILABLE ON THIS ENGINE'
+  END                        AS status,
+  CASE
+    WHEN ke.component_type = 'MODULE'
+      THEN 'If required, add to the DB cluster parameter group shared_preload_libraries and reboot; do not run CREATE EXTENSION'
+    WHEN e.extname IS NOT NULL THEN 'n/a'
+    WHEN ae.name IS NULL AND ke.extname = 'pg_wait_sampling'
+      THEN 'Not offered by this engine; use Aurora Performance Insights and CloudWatch wait metrics'
+    WHEN ae.name IS NULL
+      THEN 'Not offered by this engine/version; verify the AWS-supported extension list before changing the parameter group'
+    WHEN ke.requires_preload
+      THEN 'First configure required preload settings in the DB cluster parameter group and reboot, then run: CREATE EXTENSION IF NOT EXISTS ' || quote_ident(ke.extname) || ';'
+    ELSE 'CREATE EXTENSION IF NOT EXISTS ' || quote_ident(ke.extname) || ';'
+  END                        AS enablement_guidance
 FROM known_extensions ke
 LEFT JOIN pg_extension e ON e.extname = ke.extname
+LEFT JOIN pg_available_extensions ae ON ae.name = ke.extname
 ORDER BY
   CASE ke.importance
     WHEN 'CRITICAL'    THEN 1
@@ -1414,12 +1426,15 @@ SELECT
     ELSE 'pg_stat_statements: NOT in preload (add to parameter group and reboot)'
   END AS pgss_status,
   CASE
-    WHEN current_setting('shared_preload_libraries') LIKE '%auto_explain%' THEN 'auto_explain: LOADED'
-    ELSE 'auto_explain: not preloaded'
+    WHEN position('auto_explain' IN current_setting('shared_preload_libraries')) > 0 THEN 'auto_explain: PRELOADED MODULE'
+    ELSE 'auto_explain: MODULE NOT PRELOADED (no CREATE EXTENSION step)'
   END AS auto_explain_status,
   CASE
-    WHEN current_setting('shared_preload_libraries') LIKE '%pg_wait_sampling%' THEN 'pg_wait_sampling: LOADED'
-    ELSE 'pg_wait_sampling: not preloaded'
+    WHEN NOT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_wait_sampling')
+      THEN 'pg_wait_sampling: NOT AVAILABLE ON THIS ENGINE'
+    WHEN position('pg_wait_sampling' IN current_setting('shared_preload_libraries')) > 0
+      THEN 'pg_wait_sampling: PRELOADED'
+    ELSE 'pg_wait_sampling: AVAILABLE BUT NOT PRELOADED'
   END AS wait_sampling_status;
 
 \qecho <h3>Observability Settings Assessment</h3>
@@ -1478,7 +1493,7 @@ SELECT
   'Slow query logging is disabled (log_min_duration_statement = -1)',
   'Set log_min_duration_statement = 1000 in parameter group to capture slow queries',
   '-1'
-WHERE current_setting('log_min_duration_statement')::int = -1;
+WHERE (SELECT setting::int FROM pg_settings WHERE name = 'log_min_duration_statement') = -1;
 
 INSERT INTO report_findings (section, severity, finding, recommendation, metric_value)
 SELECT
@@ -1608,9 +1623,9 @@ FROM (
 
   UNION ALL
   SELECT 10, 'Slow Query Logging (log_min_duration_statement)',
-    current_setting('log_min_duration_statement') || ' ms',
-    CASE WHEN current_setting('log_min_duration_statement')::int = -1 THEN 'CRITICAL - disabled'
-         WHEN current_setting('log_min_duration_statement')::int > 5000 THEN 'WARNING'
+    (SELECT setting || ' ms' FROM pg_settings WHERE name = 'log_min_duration_statement'),
+    CASE WHEN (SELECT setting::int FROM pg_settings WHERE name = 'log_min_duration_statement') = -1 THEN 'CRITICAL - disabled'
+         WHEN (SELECT setting::int FROM pg_settings WHERE name = 'log_min_duration_statement') > 5000 THEN 'WARNING'
          ELSE 'OK' END
 
 ) dashboard
@@ -1661,7 +1676,6 @@ SELECT
   (SELECT count(*) FROM report_findings)                             AS total_findings;
 
 \qecho </section>
-\qecho </body></html>
 
 
 \qecho <!-- Extended Analysis Sections -->
@@ -1869,6 +1883,9 @@ UNION ALL SELECT
 FROM pg_stat_bgwriter;
 
 \qecho </section>
+
+\qecho <!-- End of PostgreSQL Aurora Observability Report -->
+\qecho </body></html>
 
 \q
 
@@ -2270,8 +2287,8 @@ UNION ALL SELECT
 UNION ALL SELECT 
   'Hash Spill Risk Level',
   CASE 
-    WHEN (current_setting('work_mem')::numeric) < 4096 THEN 'HIGH'
-    WHEN (current_setting('work_mem')::numeric) < 16384 THEN 'MEDIUM'
+    WHEN (SELECT setting::numeric FROM pg_settings WHERE name = 'work_mem') < 4096 THEN 'HIGH'
+    WHEN (SELECT setting::numeric FROM pg_settings WHERE name = 'work_mem') < 16384 THEN 'MEDIUM'
     ELSE 'LOW' 
   END;
 
@@ -3587,9 +3604,9 @@ SELECT name, setting, unit FROM pg_settings
 WHERE name IN ('max_connections', 'shared_buffers', 'work_mem', 'effective_cache_size');
 
 -- Memory allocation summary
-SELECT 'Shared Buffers' as component, (current_setting('shared_buffers')::numeric * 8) as bytes_kb
-UNION ALL SELECT 'Work Memory', (current_setting('work_mem')::numeric)
-UNION ALL SELECT 'Maintenance Work Memory', (current_setting('maintenance_work_mem')::numeric);
+SELECT 'Shared Buffers' as component, (SELECT setting::numeric * 8 FROM pg_settings WHERE name = 'shared_buffers') as bytes_kb
+UNION ALL SELECT 'Work Memory', (SELECT setting::numeric FROM pg_settings WHERE name = 'work_mem')
+UNION ALL SELECT 'Maintenance Work Memory', (SELECT setting::numeric FROM pg_settings WHERE name = 'maintenance_work_mem');
 
 -- Cache hit ratio
 SELECT round(100 * sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)), 2) as cache_hit_pct
@@ -3656,11 +3673,6 @@ FROM pg_statio_user_tables;
 \qecho </p>
 
 \qecho </section>
-
-\qecho <!-- Report end marker -->
-\qecho </body></html>
-
-
 
 -- ========================================
 -- ADDITIONAL QUERY EXAMPLES FOR REFERENCE
@@ -3782,5 +3794,6 @@ FROM table_stats GROUP BY size_class ORDER BY size_class;
 \qecho </section>
 
 \qecho <!-- End of comprehensive observability report -->
+\qecho </body></html>
 
 \q

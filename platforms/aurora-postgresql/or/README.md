@@ -25,14 +25,16 @@ Example:
 
 ```bash
 psql \
-  -f ../aws-rds/postgres_observability_report.sql
+  -v ON_ERROR_STOP=1 \
+  -f ../aws-rds/postgres_observability_report.sql \
+  -o postgres_observability_report.html
 ```
 
 That script:
 
 - does **not** create schemas
 - does **not** create helper functions
-- writes `postgres_observability_report.html` in the current working directory
+- writes `postgres_observability_report.html` in the current working directory when invoked with the documented `-o` option
 - limits output to top resource consumers
 
 If you are troubleshooting live production performance, use that path first.
