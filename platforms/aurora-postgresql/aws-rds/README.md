@@ -20,12 +20,17 @@ Example:
 
 ```bash
 psql \
-  -f postgres_observability_report.sql
+  "host=your-aurora-writer.cluster-xxxx.us-east-1.rds.amazonaws.com port=5432 dbname=your_database user=postgres sslmode=require" \
+  -v ON_ERROR_STOP=1 \
+  -f postgres_observability_report.sql \
+  -o postgres_observability_report.html
 ```
 
 Output file:
 
 - `postgres_observability_report.html` (written to your current working directory)
+
+Without `-o`, psql writes the HTML to the terminal instead of creating a report file.
 
 Optional legacy-only companion:
 
